@@ -38,7 +38,7 @@ export default async function AdminSettingsPage() {
       prisma.photo.count(),
     ]);
 
-  const [anthropic, apiFootball, resend, footballData, perplexity, grok, ga] =
+  const [anthropic, apiFootball, resend, footballData, perplexity, grok, googleApi, googleCx, ga] =
     await Promise.all([
       getKeyStatus("ANTHROPIC_API_KEY"),
       getKeyStatus("API_FOOTBALL_KEY"),
@@ -46,11 +46,13 @@ export default async function AdminSettingsPage() {
       getKeyStatus("FOOTBALL_DATA_API_KEY"),
       getKeyStatus("PERPLEXITY_API_KEY"),
       getKeyStatus("GROK_API_KEY"),
+      getKeyStatus("GOOGLE_API_KEY"),
+      getKeyStatus("GOOGLE_SEARCH_CX"),
       getKeyStatus("GA_MEASUREMENT_ID"),
     ]);
 
-  const totalKeys = 7;
-  const configuredKeys = [anthropic, apiFootball, resend, footballData, perplexity, grok, ga].filter(k => k.configured).length;
+  const totalKeys = 9;
+  const configuredKeys = [anthropic, apiFootball, resend, footballData, perplexity, grok, googleApi, googleCx, ga].filter(k => k.configured).length;
 
   const envVars = [
     { key: "NEXT_PUBLIC_SITE_URL", value: process.env.NEXT_PUBLIC_SITE_URL || "Not set", sensitive: false },
@@ -137,6 +139,34 @@ export default async function AdminSettingsPage() {
           <div className="pt-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Peña Enrichment (optional - skipped if missing)</p>
           </div>
+
+          {/* GOOGLE_API_KEY */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">GOOGLE_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">Google Custom Search API key. Get at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">Google Cloud Console</a> (free: 100/day)</p>
+              </div>
+              <StatusBadge {...googleApi} />
+            </div>
+            <SettingForm settingKey="GOOGLE_API_KEY" placeholder="AIzaSy..." successMessage="Google API key saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* GOOGLE_SEARCH_CX */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">GOOGLE_SEARCH_CX</span>
+                <p className="text-xs text-gray-500 mt-0.5">Programmable Search Engine ID. Create at <a href="https://programmablesearchengine.google.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">Programmable Search Engine</a> (search entire web)</p>
+              </div>
+              <StatusBadge {...googleCx} />
+            </div>
+            <SettingForm settingKey="GOOGLE_SEARCH_CX" placeholder="a1b2c3d4e5f6g7h8i" successMessage="Google Search CX saved." />
+          </div>
+
+          <hr className="border-gray-100" />
 
           {/* PERPLEXITY */}
           <div>
