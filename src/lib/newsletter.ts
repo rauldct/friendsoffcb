@@ -33,6 +33,49 @@ export function verifyUnsubscribeToken(subscriberId: string, token: string): boo
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(token));
 }
 
+// ============== MARKDOWN → HTML ==============
+
+export function markdownToHtml(content: string): string {
+  let html = content;
+
+  // Escape HTML entities in the raw text (but preserve existing HTML tags if any)
+  // Only escape if content looks like plain text (has ## headers)
+  if (html.includes("##") && !html.includes("<h2")) {
+    html = html
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // ## Headers → <h2>
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+
+  // **bold** → <strong>
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+  // *italic* → <em>
+  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+  // [text](url) → <a href="url">text</a>
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  // Double newlines → paragraph breaks
+  html = html
+    .split(/\n\n+/)
+    .map((block) => {
+      block = block.trim();
+      if (!block) return "";
+      // Don't wrap headers in <p>
+      if (block.startsWith("<h2") || block.startsWith("<h3")) return block;
+      return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return html;
+}
+
 // ============== EMAIL TEMPLATE ==============
 
 export function renderEmailTemplate({
@@ -60,8 +103,13 @@ export function renderEmailTemplate({
     .header p { color: rgba(255,255,255,0.8); font-size: 14px; margin: 8px 0 0; }
     .content { padding: 32px 24px; color: #1A1A2E; font-size: 16px; line-height: 1.6; }
     .content h2 { color: #004D98; margin-top: 24px; }
+    .content h3 { color: #A50044; margin-top: 20px; }
     .content a { color: #004D98; }
     .content img { max-width: 100%; height: auto; }
+    .article-card { border-left: 3px solid #004D98; padding: 12px 16px; margin: 16px 0; background-color: #f8f9fa; }
+    .article-card h3 { margin: 0 0 8px; color: #1A1A2E; font-size: 16px; }
+    .article-card p { margin: 0; font-size: 14px; color: #4a5568; }
+    .article-card a { color: #004D98; font-size: 13px; font-weight: 600; }
     .footer { background-color: #1A1A2E; padding: 24px; text-align: center; }
     .footer p { color: rgba(255,255,255,0.6); font-size: 12px; margin: 4px 0; }
     .footer a { color: #EDBB00; text-decoration: none; }
@@ -212,11 +260,14 @@ export async function sendDigestAsNewsletter(articleId: string): Promise<{ succe
     return { success: false, message: "Article not found" };
   }
 
+  // Convert markdown content to HTML
+  const htmlContent = markdownToHtml(article.content);
+
   // Create newsletter from article content
   const newsletter = await prisma.newsletter.create({
     data: {
       subject: article.title,
-      htmlContent: article.content,
+      htmlContent,
       textContent: article.excerpt,
       status: "draft",
     },
@@ -249,4 +300,103 @@ export async function sendLatestDigestAsNewsletter(): Promise<{ success: boolean
   }
 
   return sendDigestAsNewsletter(latestDigest.id);
+}
+
+// ============== WEEKLY NEWSLETTER (100% AUTO) ==============
+
+export async function generateAndSendWeeklyNewsletter(): Promise<{ success: boolean; message: string }> {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+
+  // 1. Find all published articles from the last 7 days (digests + chronicles)
+  let articles = await prisma.newsArticle.findMany({
+    where: {
+      status: "published",
+      publishedAt: { gte: weekAgo },
+    },
+    orderBy: { publishedAt: "desc" },
+  });
+
+  // 2. If no recent articles, try to generate a fresh digest
+  if (articles.length === 0) {
+    console.log("[Weekly Newsletter] No recent articles, generating fresh digest...");
+    try {
+      const { generateNewsDigest } = await import("@/lib/news-automation");
+      const articleId = await generateNewsDigest();
+      if (articleId) {
+        const freshArticle = await prisma.newsArticle.findUnique({ where: { id: articleId } });
+        if (freshArticle) articles = [freshArticle];
+      }
+    } catch (err) {
+      console.error("[Weekly Newsletter] Failed to generate digest:", err);
+    }
+  }
+
+  if (articles.length === 0) {
+    return { success: false, message: "No articles available for weekly newsletter" };
+  }
+
+  // 3. Check if we already sent a weekly newsletter this week
+  const weeklySubjectPrefix = `Weekly Barça Roundup`;
+  const dateRange = `${weekAgo.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  const subject = `${weeklySubjectPrefix}: ${dateRange}`;
+
+  const existingNewsletter = await prisma.newsletter.findFirst({
+    where: {
+      subject,
+      status: { in: ["sent", "sending"] },
+    },
+  });
+
+  if (existingNewsletter) {
+    return { success: false, message: `Weekly newsletter "${subject}" already sent` };
+  }
+
+  // 4. Compose HTML from all articles
+  const articleCards = articles.map((article) => {
+    const pubDate = article.publishedAt
+      ? new Date(article.publishedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+      : "";
+    const categoryLabel = article.category === "chronicle" ? "Match Report" : "News Digest";
+    const articleUrl = `${SITE_URL}/news/${article.slug}`;
+
+    return `<div class="article-card">
+      <h3>${escapeHtml(article.title)}</h3>
+      <p><em>${categoryLabel} &mdash; ${pubDate}</em></p>
+      <p>${escapeHtml(article.excerpt)}</p>
+      <p><a href="${articleUrl}">Read full article &rarr;</a></p>
+    </div>`;
+  }).join("\n");
+
+  // If we only have 1 article, also include its full content converted to HTML
+  let fullContent = "";
+  if (articles.length === 1) {
+    fullContent = markdownToHtml(articles[0].content);
+  }
+
+  const htmlContent = `
+    <h2>This Week in Bar&ccedil;a</h2>
+    <p>Here's your weekly roundup of FC Barcelona news and match reports from ${dateRange}.</p>
+    ${articles.length === 1 ? fullContent : articleCards}
+    <p style="text-align: center; margin-top: 24px;">
+      <a href="${SITE_URL}/news" class="cta-button">Read All News</a>
+    </p>
+  `;
+
+  // Build plain text version
+  const textContent = articles.map((a) => `${a.title}\n${a.excerpt}\n${SITE_URL}/news/${a.slug}`).join("\n\n");
+
+  // 5. Create newsletter and send
+  const newsletter = await prisma.newsletter.create({
+    data: {
+      subject,
+      htmlContent,
+      textContent,
+      status: "draft",
+    },
+  });
+
+  console.log(`[Weekly Newsletter] Created newsletter "${subject}" with ${articles.length} articles`);
+
+  return sendNewsletter(newsletter.id);
 }

@@ -5,6 +5,28 @@ import SettingForm from "./SettingForm";
 
 export const dynamic = "force-dynamic";
 
+async function getKeyStatus(key: string): Promise<{ configured: boolean; masked: string }> {
+  const db = await prisma.setting.findUnique({ where: { key } });
+  const value = db?.value || process.env[key] || "";
+  if (!value) return { configured: false, masked: "" };
+  if (key === "GA_MEASUREMENT_ID") return { configured: true, masked: value };
+  return { configured: true, masked: value.slice(0, 8) + "..." + value.slice(-4) };
+}
+
+function StatusBadge({ configured, masked }: { configured: boolean; masked: string }) {
+  if (configured) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-mono text-gray-400">{masked}</span>
+        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700 whitespace-nowrap">Active</span>
+      </div>
+    );
+  }
+  return (
+    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600 whitespace-nowrap">Not configured</span>
+  );
+}
+
 export default async function AdminSettingsPage() {
   const [matchCount, packageCount, postCount, leadCount, subscriberCount, photoCount] =
     await Promise.all([
@@ -16,32 +38,24 @@ export default async function AdminSettingsPage() {
       prisma.photo.count(),
     ]);
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const dbSetting = await prisma.setting.findUnique({ where: { key: "ANTHROPIC_API_KEY" } });
-  const currentKey = dbSetting?.value || anthropicKey || "";
-  const maskedKey = currentKey
-    ? currentKey.slice(0, 12) + "..." + currentKey.slice(-4)
-    : "Not configured";
+  const [anthropic, apiFootball, resend, footballData, serper, perplexity, grok, ga] =
+    await Promise.all([
+      getKeyStatus("ANTHROPIC_API_KEY"),
+      getKeyStatus("API_FOOTBALL_KEY"),
+      getKeyStatus("RESEND_API_KEY"),
+      getKeyStatus("FOOTBALL_DATA_API_KEY"),
+      getKeyStatus("SERPER_API_KEY"),
+      getKeyStatus("PERPLEXITY_API_KEY"),
+      getKeyStatus("GROK_API_KEY"),
+      getKeyStatus("GA_MEASUREMENT_ID"),
+    ]);
 
-  const resendDbSetting = await prisma.setting.findUnique({ where: { key: "RESEND_API_KEY" } });
-  const currentResendKey = resendDbSetting?.value || process.env.RESEND_API_KEY || "";
-  const maskedResendKey = currentResendKey
-    ? currentResendKey.slice(0, 8) + "..." + currentResendKey.slice(-4)
-    : "Not configured";
-
-  const gaDbSetting = await prisma.setting.findUnique({ where: { key: "GA_MEASUREMENT_ID" } });
-  const currentGaId = gaDbSetting?.value || process.env.GA_MEASUREMENT_ID || "";
-  const maskedGaId = currentGaId || "Not configured";
-
-  const footballDbSetting = await prisma.setting.findUnique({ where: { key: "API_FOOTBALL_KEY" } });
-  const currentFootballKey = footballDbSetting?.value || process.env.API_FOOTBALL_KEY || "";
-  const maskedFootballKey = currentFootballKey
-    ? currentFootballKey.slice(0, 8) + "..." + currentFootballKey.slice(-4)
-    : "Not configured";
+  const totalKeys = 8;
+  const configuredKeys = [anthropic, apiFootball, resend, footballData, serper, perplexity, grok, ga].filter(k => k.configured).length;
 
   const envVars = [
     { key: "NEXT_PUBLIC_SITE_URL", value: process.env.NEXT_PUBLIC_SITE_URL || "Not set", sensitive: false },
-    { key: "DATABASE_URL", value: process.env.DATABASE_URL ? "●●●●●●●● (configured)" : "Not set", sensitive: true },
+    { key: "DATABASE_URL", value: process.env.DATABASE_URL ? "configured" : "Not set", sensitive: true },
     { key: "NODE_ENV", value: process.env.NODE_ENV || "Not set", sensitive: false },
   ];
 
@@ -57,49 +71,112 @@ export default async function AdminSettingsPage() {
 
       {/* API Keys */}
       <div className="bg-white rounded-xl shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-heading font-bold text-[#1A1A2E]">API Keys</h2>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${configuredKeys === totalKeys ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+            {configuredKeys}/{totalKeys} configured
+          </span>
         </div>
         <div className="p-5 space-y-4">
+          {/* ANTHROPIC */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">ANTHROPIC_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">Used for AI photo moderation and competition predictions</p>
+                <p className="text-xs text-gray-500 mt-0.5">Used for AI photo moderation, competition predictions, and peña enrichment</p>
               </div>
-              <span className="text-xs font-mono text-gray-400">{maskedKey}</span>
+              <StatusBadge {...anthropic} />
             </div>
             <ApiKeyForm />
           </div>
+
           <hr className="border-gray-100" />
+
+          {/* FOOTBALL_DATA */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">FOOTBALL_DATA_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">Current season standings (La Liga, CL). Get at <a href="https://www.football-data.org/client/register" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">football-data.org</a> (free forever)</p>
+              </div>
+              <StatusBadge {...footballData} />
+            </div>
+            <SettingForm settingKey="FOOTBALL_DATA_API_KEY" placeholder="Your football-data.org API key" successMessage="Football-Data API key saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* API_FOOTBALL */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">API_FOOTBALL_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">For competition standings &amp; match data. Get yours at <a href="https://dashboard.api-football.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">api-sports.io</a></p>
+                <p className="text-xs text-gray-500 mt-0.5">Fallback for Copa del Rey data. Get at <a href="https://dashboard.api-football.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">api-sports.io</a></p>
               </div>
-              <span className="text-xs font-mono text-gray-400">{maskedFootballKey}</span>
+              <StatusBadge {...apiFootball} />
             </div>
-            <SettingForm
-              settingKey="API_FOOTBALL_KEY"
-              placeholder="Your API-Football key from api-sports.io"
-              successMessage="API-Football key saved."
-            />
+            <SettingForm settingKey="API_FOOTBALL_KEY" placeholder="Your API-Football key from api-sports.io" successMessage="API-Football key saved." />
           </div>
+
           <hr className="border-gray-100" />
+
+          {/* RESEND */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">RESEND_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">For sending newsletters. Get yours at <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">resend.com</a> (free: 3000/month)</p>
+                <p className="text-xs text-gray-500 mt-0.5">For sending newsletters. Get at <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">resend.com</a> (free: 3000/month)</p>
               </div>
-              <span className="text-xs font-mono text-gray-400">{maskedResendKey}</span>
+              <StatusBadge {...resend} />
             </div>
-            <SettingForm
-              settingKey="RESEND_API_KEY"
-              placeholder="re_xxxxxxxxxxxxxxxxxxxx"
-              successMessage="Resend API key saved."
-            />
+            <SettingForm settingKey="RESEND_API_KEY" placeholder="re_xxxxxxxxxxxxxxxxxxxx" successMessage="Resend API key saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Enrichment section header */}
+          <div className="pt-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Peña Enrichment (optional - skipped if missing)</p>
+          </div>
+
+          {/* SERPER */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">SERPER_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">Google Search via Serper. Get at <a href="https://serper.dev" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">serper.dev</a> (2500 free searches)</p>
+              </div>
+              <StatusBadge {...serper} />
+            </div>
+            <SettingForm settingKey="SERPER_API_KEY" placeholder="Your Serper.dev API key" successMessage="Serper API key saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* PERPLEXITY */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">PERPLEXITY_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">Perplexity Sonar web search. Get at <a href="https://docs.perplexity.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">perplexity.ai</a></p>
+              </div>
+              <StatusBadge {...perplexity} />
+            </div>
+            <SettingForm settingKey="PERPLEXITY_API_KEY" placeholder="pplx-xxxxxxxxxxxxxxxxxxxx" successMessage="Perplexity API key saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* GROK */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">GROK_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">Grok (xAI) web search. Get at <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">console.x.ai</a></p>
+              </div>
+              <StatusBadge {...grok} />
+            </div>
+            <SettingForm settingKey="GROK_API_KEY" placeholder="xai-xxxxxxxxxxxxxxxxxxxx" successMessage="Grok API key saved." />
           </div>
         </div>
       </div>
@@ -116,7 +193,7 @@ export default async function AdminSettingsPage() {
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">GA_MEASUREMENT_ID</span>
                 <p className="text-xs text-gray-500 mt-0.5">Google Analytics 4 Measurement ID (e.g. G-XXXXXXXXXX)</p>
               </div>
-              <span className="text-xs font-mono text-gray-400">{maskedGaId}</span>
+              <StatusBadge {...ga} />
             </div>
             <SettingForm
               settingKey="GA_MEASUREMENT_ID"

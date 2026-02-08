@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { sendLatestDigestAsNewsletter } from "@/lib/newsletter";
+import { generateAndSendWeeklyNewsletter } from "@/lib/newsletter";
 
 export async function POST() {
-  const result = await sendLatestDigestAsNewsletter();
+  const result = await generateAndSendWeeklyNewsletter();
 
   if (!result.success) {
     return NextResponse.json({ error: result.message }, { status: 400 });
