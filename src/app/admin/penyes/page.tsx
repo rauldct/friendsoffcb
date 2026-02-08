@@ -6,6 +6,7 @@ interface SocialMedia {
   facebook?: string;
   twitter?: string;
   instagram?: string;
+  tiktok?: string;
 }
 
 interface Penya {
@@ -163,6 +164,7 @@ export default function AdminPenyesPage() {
       facebook: sm.facebook || "",
       twitter: sm.twitter || "",
       instagram: sm.instagram || "",
+      tiktok: sm.tiktok || "",
     });
   };
 
@@ -185,6 +187,7 @@ export default function AdminPenyesPage() {
           facebook: formData.facebook || null,
           twitter: formData.twitter || null,
           instagram: formData.instagram || null,
+          tiktok: formData.tiktok || null,
         },
       };
       const res = await fetch(`/api/admin/penyes/${selectedPenya.id}`, {
@@ -355,30 +358,11 @@ export default function AdminPenyesPage() {
                     className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => openSlideOver(p)}
                   >
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`w-2 h-2 rounded-full ${statusDot(p.enrichmentStatus)} flex-shrink-0`}
-                          title={statusLabel(p.enrichmentStatus)}
-                        />
-                        <button
-                          onClick={(e) => handleEnrich(p.id, e)}
-                          disabled={enriching === p.id}
-                          className="p-1 rounded hover:bg-gray-200 transition-colors disabled:opacity-50"
-                          title="Search with AI"
-                        >
-                          {enriching === p.id ? (
-                            <svg className="w-4 h-4 animate-spin text-[#004D98]" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4 text-gray-400 hover:text-[#004D98]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
+                    <td className="px-3 py-3 text-center">
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${statusDot(p.enrichmentStatus)} inline-block`}
+                        title={statusLabel(p.enrichmentStatus)}
+                      />
                     </td>
                     <td className="px-4 py-3 font-medium text-[#1A1A2E]">{p.name}</td>
                     <td className="px-4 py-3 text-gray-600">{p.city}</td>
@@ -618,6 +602,16 @@ export default function AdminPenyesPage() {
                       onChange={e => updateField("instagram", e.target.value)}
                       className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
                       placeholder="https://instagram.com/..."
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-16">TikTok</span>
+                    <input
+                      type="url"
+                      value={(formData.tiktok as string) || ""}
+                      onChange={e => updateField("tiktok", e.target.value)}
+                      className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                      placeholder="https://tiktok.com/@..."
                     />
                   </div>
                 </div>

@@ -56,6 +56,7 @@ export async function PATCH(
     if (body.socialMedia?.facebook) sm.facebook = body.socialMedia.facebook;
     if (body.socialMedia?.twitter) sm.twitter = body.socialMedia.twitter;
     if (body.socialMedia?.instagram) sm.instagram = body.socialMedia.instagram;
+    if (body.socialMedia?.tiktok) sm.tiktok = body.socialMedia.tiktok;
     data.socialMedia = Object.keys(sm).length > 0 ? sm : Prisma.DbNull;
   }
 
