@@ -38,20 +38,19 @@ export default async function AdminSettingsPage() {
       prisma.photo.count(),
     ]);
 
-  const [anthropic, apiFootball, resend, footballData, serper, perplexity, grok, ga] =
+  const [anthropic, apiFootball, resend, footballData, perplexity, grok, ga] =
     await Promise.all([
       getKeyStatus("ANTHROPIC_API_KEY"),
       getKeyStatus("API_FOOTBALL_KEY"),
       getKeyStatus("RESEND_API_KEY"),
       getKeyStatus("FOOTBALL_DATA_API_KEY"),
-      getKeyStatus("SERPER_API_KEY"),
       getKeyStatus("PERPLEXITY_API_KEY"),
       getKeyStatus("GROK_API_KEY"),
       getKeyStatus("GA_MEASUREMENT_ID"),
     ]);
 
-  const totalKeys = 8;
-  const configuredKeys = [anthropic, apiFootball, resend, footballData, serper, perplexity, grok, ga].filter(k => k.configured).length;
+  const totalKeys = 7;
+  const configuredKeys = [anthropic, apiFootball, resend, footballData, perplexity, grok, ga].filter(k => k.configured).length;
 
   const envVars = [
     { key: "NEXT_PUBLIC_SITE_URL", value: process.env.NEXT_PUBLIC_SITE_URL || "Not set", sensitive: false },
@@ -138,20 +137,6 @@ export default async function AdminSettingsPage() {
           <div className="pt-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Peña Enrichment (optional - skipped if missing)</p>
           </div>
-
-          {/* SERPER */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <span className="font-mono text-sm font-medium text-[#1A1A2E]">SERPER_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">Google Search via Serper. Get at <a href="https://serper.dev" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">serper.dev</a> (2500 free searches)</p>
-              </div>
-              <StatusBadge {...serper} />
-            </div>
-            <SettingForm settingKey="SERPER_API_KEY" placeholder="Your Serper.dev API key" successMessage="Serper API key saved." />
-          </div>
-
-          <hr className="border-gray-100" />
 
           {/* PERPLEXITY */}
           <div>
