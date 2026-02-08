@@ -12,6 +12,7 @@ const adminLinks = [
   { href: "/admin/gallery", label: "Gallery", icon: "📸" },
   { href: "/admin/automations", label: "Automations", icon: "🤖" },
   { href: "/admin/penyes", label: "Peñas", icon: "🏠" },
+  { href: "/admin/newsletter", label: "Newsletter", icon: "📨" },
   { href: "/admin/users", label: "Users", icon: "👤" },
   { href: "/admin/settings", label: "Settings", icon: "⚙️" },
 ];

@@ -23,6 +23,12 @@ export default async function AdminSettingsPage() {
     ? currentKey.slice(0, 12) + "..." + currentKey.slice(-4)
     : "Not configured";
 
+  const resendDbSetting = await prisma.setting.findUnique({ where: { key: "RESEND_API_KEY" } });
+  const currentResendKey = resendDbSetting?.value || process.env.RESEND_API_KEY || "";
+  const maskedResendKey = currentResendKey
+    ? currentResendKey.slice(0, 8) + "..." + currentResendKey.slice(-4)
+    : "Not configured";
+
   const gaDbSetting = await prisma.setting.findUnique({ where: { key: "GA_MEASUREMENT_ID" } });
   const currentGaId = gaDbSetting?.value || process.env.GA_MEASUREMENT_ID || "";
   const maskedGaId = currentGaId || "Not configured";
@@ -78,6 +84,21 @@ export default async function AdminSettingsPage() {
               settingKey="API_FOOTBALL_KEY"
               placeholder="Your API-Football key from api-sports.io"
               successMessage="API-Football key saved."
+            />
+          </div>
+          <hr className="border-gray-100" />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">RESEND_API_KEY</span>
+                <p className="text-xs text-gray-500 mt-0.5">For sending newsletters. Get yours at <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">resend.com</a> (free: 3000/month)</p>
+              </div>
+              <span className="text-xs font-mono text-gray-400">{maskedResendKey}</span>
+            </div>
+            <SettingForm
+              settingKey="RESEND_API_KEY"
+              placeholder="re_xxxxxxxxxxxxxxxxxxxx"
+              successMessage="Resend API key saved."
             />
           </div>
         </div>
