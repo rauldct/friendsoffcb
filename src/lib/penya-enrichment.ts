@@ -362,16 +362,14 @@ function formatScrapedData(pages: ScrapedPage[]): SourceData | null {
   return { source: "Web Scraping (direct visit)", snippets: parts.join("\n\n---\n\n") };
 }
 
-// ============== STEP 0: WEB SEARCH (Google Custom Search + DuckDuckGo fallback) ==============
+// ============== STEP 0: WEB SEARCH (Brave Search + DuckDuckGo fallback) ==============
 
-const getGoogleApiKey = () => getSettingKey("GOOGLE_API_KEY");
-const getGoogleSearchCx = () => getSettingKey("GOOGLE_SEARCH_CX");
+const getBraveApiKey = () => getSettingKey("BRAVE_API_KEY");
 
-async function searchGoogle(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null } | null> {
-  const apiKey = await getGoogleApiKey();
-  const cx = await getGoogleSearchCx();
-  if (!apiKey || !cx) {
-    console.log("[Enrichment] Google API key or CX not configured, falling back to DuckDuckGo");
+async function searchBrave(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null } | null> {
+  const apiKey = await getBraveApiKey();
+  if (!apiKey) {
+    console.log("[Enrichment] Brave API key not configured, falling back to DuckDuckGo");
     return null;
   }
 
@@ -386,26 +384,32 @@ async function searchGoogle(name: string, city: string, country: string): Promis
   for (const query of queries) {
     try {
       const params = new URLSearchParams({
-        key: apiKey,
-        cx: cx,
         q: query,
-        num: "10",
+        count: "10",
+        search_lang: "es",
       });
 
-      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+      const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+        headers: {
+          "Accept": "application/json",
+          "Accept-Encoding": "gzip",
+          "X-Subscription-Token": apiKey,
+        },
+      });
+
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        console.error(`[Enrichment] Google Search API error: ${res.status} ${errText.slice(0, 200)}`);
+        console.error(`[Enrichment] Brave Search API error: ${res.status} ${errText.slice(0, 200)}`);
         continue;
       }
 
       const data = await res.json();
-      const items = data.items || [];
+      const results = data.web?.results || [];
 
-      for (const item of items) {
-        const url = item.link || "";
+      for (const item of results) {
+        const url = item.url || "";
         const title = item.title || "";
-        const snippet = item.snippet || "";
+        const snippet = item.description || "";
 
         if (url.startsWith("http")) {
           if (isScrapableUrl(url)) {
@@ -415,22 +419,22 @@ async function searchGoogle(name: string, city: string, country: string): Promis
         }
       }
 
-      // Respect rate limits (Google allows 100/day)
-      await new Promise(r => setTimeout(r, 200));
+      // Small delay between queries
+      await new Promise(r => setTimeout(r, 300));
     } catch (err) {
-      console.error(`[Enrichment] Google search error:`, err instanceof Error ? err.message : err);
+      console.error(`[Enrichment] Brave search error:`, err instanceof Error ? err.message : err);
     }
   }
 
   const uniqueUrls = [...new Set(allUrls)].slice(0, 8);
-  console.log(`[Enrichment] ${name}: Google search found ${uniqueUrls.length} URLs, ${allSnippets.length} snippets`);
+  console.log(`[Enrichment] ${name}: Brave search found ${uniqueUrls.length} URLs, ${allSnippets.length} snippets`);
 
   if (allSnippets.length === 0 && uniqueUrls.length === 0) return { urls: [], source: null };
 
   return {
     urls: uniqueUrls,
     source: allSnippets.length > 0
-      ? { source: "Google Search", snippets: allSnippets.slice(0, 15).join("\n\n") }
+      ? { source: "Brave Search", snippets: allSnippets.slice(0, 15).join("\n\n") }
       : null,
   };
 }
@@ -502,9 +506,9 @@ async function searchDuckDuckGo(name: string, city: string, country: string): Pr
 }
 
 async function searchWeb(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null }> {
-  // Try Google first (much better results), fallback to DuckDuckGo
-  const googleResult = await searchGoogle(name, city, country);
-  if (googleResult) return googleResult;
+  // Try Brave Search first (best results, full web), fallback to DuckDuckGo
+  const braveResult = await searchBrave(name, city, country);
+  if (braveResult) return braveResult;
   return searchDuckDuckGo(name, city, country);
 }
 
