@@ -12,6 +12,7 @@ const adminLinks = [
   { href: "/admin/gallery", label: "Gallery", icon: "📸" },
   { href: "/admin/automations", label: "Automations", icon: "🤖" },
   { href: "/admin/penyes", label: "Peñas", icon: "🏠" },
+  { href: "/admin/penyes/chat", label: "Chat RAG", icon: "💬" },
   { href: "/admin/newsletter", label: "Newsletter", icon: "📨" },
   { href: "/admin/users", label: "Users", icon: "👤" },
   { href: "/admin/settings", label: "Settings", icon: "⚙️" },
@@ -68,7 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   key={link.href}
                   href={link.href}
                   className={`flex items-center gap-3 px-4 py-3 text-sm font-medium border-b border-gray-50 transition-colors ${
-                    pathname === link.href
+                    pathname === link.href || (link.href !== "/admin" && pathname.startsWith(link.href + "/"))
                       ? "bg-[#004D98] text-white"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}

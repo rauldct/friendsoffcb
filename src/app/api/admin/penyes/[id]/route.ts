@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { indexPenya } from "@/lib/rag";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,13 @@ export async function PATCH(
     where: { id: params.id },
     data,
   });
+
+  // Auto-reindex in RAG after manual update
+  try {
+    await indexPenya(params.id);
+  } catch (err) {
+    console.error("[RAG] Auto-index after manual update failed:", err);
+  }
 
   return NextResponse.json({
     ...updated,

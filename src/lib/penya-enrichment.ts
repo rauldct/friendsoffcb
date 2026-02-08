@@ -171,6 +171,77 @@ function formatScrapedData(pages: ScrapedPage[]): SourceData | null {
   return { source: "Web Scraping (direct visit)", snippets: parts.join("\n\n---\n\n") };
 }
 
+// ============== STEP 0: WEB SEARCH (DuckDuckGo HTML) ==============
+
+async function searchWeb(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null }> {
+  const queries = [
+    `"${name}" ${city} peña barcelonista`,
+    `"${name}" ${city} FC Barcelona supporters club`,
+  ];
+
+  const allUrls: string[] = [];
+  const allSnippets: string[] = [];
+
+  for (const query of queries) {
+    try {
+      const encoded = encodeURIComponent(query);
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html",
+        },
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        console.log(`[Enrichment] DuckDuckGo search failed: ${res.status}`);
+        continue;
+      }
+
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      // Extract result links and snippets
+      $(".result").each((_, el) => {
+        const link = $(el).find(".result__a").attr("href") || "";
+        const snippet = $(el).find(".result__snippet").text().trim();
+        const title = $(el).find(".result__a").text().trim();
+
+        // DuckDuckGo wraps URLs in redirect - extract the actual URL
+        let actualUrl = link;
+        if (link.includes("uddg=")) {
+          try {
+            const u = new URL(link, "https://duckduckgo.com");
+            actualUrl = decodeURIComponent(u.searchParams.get("uddg") || link);
+          } catch {
+            actualUrl = link;
+          }
+        }
+
+        if (actualUrl.startsWith("http") && isScrapableUrl(actualUrl)) {
+          allUrls.push(actualUrl);
+          if (snippet) allSnippets.push(`${title}: ${snippet} (${actualUrl})`);
+        }
+      });
+
+      // Rate limit between queries
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.error(`[Enrichment] Web search error:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  const uniqueUrls = [...new Set(allUrls)].slice(0, 5);
+  console.log(`[Enrichment] ${name}: Web search found ${uniqueUrls.length} URLs`);
+
+  if (allSnippets.length === 0) return { urls: uniqueUrls, source: null };
+
+  return {
+    urls: uniqueUrls,
+    source: { source: "Web Search (DuckDuckGo)", snippets: allSnippets.slice(0, 10).join("\n\n") },
+  };
+}
+
 // ============== STEP 1: PERPLEXITY SONAR ==============
 
 async function searchPerplexity(name: string, city: string, country: string): Promise<SourceData | null> {
@@ -238,36 +309,6 @@ IMPORTANT: Include the website URL if you find one. Provide only verified data w
     if (!content) return null;
     return { source: "Grok (xAI)", snippets: content };
   } catch (err) { console.error("[Enrichment] Grok search error:", err); return null; }
-}
-
-// ============== STEP 3: SCRAPE DISCOVERED URLS ==============
-
-async function scrapeDiscoveredUrls(
-  sourceData: SourceData[],
-  penyaName: string
-): Promise<{ scrapedPages: ScrapedPage[]; scrapedSource: SourceData | null }> {
-  const allText = sourceData.map(s => s.snippets).join("\n");
-  const urls = extractUrls(allText).filter(isScrapableUrl);
-
-  if (urls.length === 0) {
-    console.log(`[Enrichment] ${penyaName}: No scrapable URLs found`);
-    return { scrapedPages: [], scrapedSource: null };
-  }
-
-  const toScrape = urls.slice(0, 3);
-  console.log(`[Enrichment] ${penyaName}: Scraping ${toScrape.length} URLs: ${toScrape.join(", ")}`);
-
-  const scrapedPages: ScrapedPage[] = [];
-  for (const url of toScrape) {
-    const page = await scrapePage(url);
-    if (page) {
-      scrapedPages.push(page);
-      console.log(`[Enrichment] ${penyaName}: Scraped ${url} - title: "${page.title}", emails: ${page.emails.length}, phones: ${page.phones.length}`);
-    }
-    await new Promise(r => setTimeout(r, 500));
-  }
-
-  return { scrapedPages, scrapedSource: formatScrapedData(scrapedPages) };
 }
 
 // ============== STEP 4: CLAUDE SYNTHESIS + WEBSITE VALIDATION ==============
@@ -374,6 +415,12 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
   const sourceData: SourceData[] = [];
 
   try {
+    // Step 0: Web search (DuckDuckGo) - always runs, no API key needed
+    console.log(`[Enrichment] ${name}: Step 0 - Web search...`);
+    const webSearch = await searchWeb(name, city, country);
+    const webSearchUrls = webSearch.urls;
+    if (webSearch.source) { sourceData.push(webSearch.source); sourcesUsed.push("Web Search"); }
+
     // Step 1: Perplexity Sonar
     console.log(`[Enrichment] ${name}: Step 1 - Perplexity Sonar...`);
     const perplexityResult = await searchPerplexity(name, city, country);
@@ -384,9 +431,23 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
     const grokResult = await searchGrok(name, city, country);
     if (grokResult) { sourceData.push(grokResult); sourcesUsed.push("Grok"); }
 
-    // Step 3: Scrape discovered URLs
-    console.log(`[Enrichment] ${name}: Step 3 - Scraping discovered URLs...`);
-    const { scrapedPages, scrapedSource } = await scrapeDiscoveredUrls(sourceData, name);
+    // Step 3: Scrape URLs (from web search + discovered in AI responses)
+    console.log(`[Enrichment] ${name}: Step 3 - Scraping URLs...`);
+    // Combine URLs from web search and from AI source text
+    const aiUrls = extractUrls(sourceData.map(s => s.snippets).join("\n")).filter(isScrapableUrl);
+    const allUrls = [...new Set([...webSearchUrls, ...aiUrls])].slice(0, 5);
+    console.log(`[Enrichment] ${name}: Total URLs to scrape: ${allUrls.length} (web: ${webSearchUrls.length}, AI: ${aiUrls.length})`);
+
+    const scrapedPages: ScrapedPage[] = [];
+    for (const url of allUrls) {
+      const page = await scrapePage(url);
+      if (page) {
+        scrapedPages.push(page);
+        console.log(`[Enrichment] ${name}: Scraped ${url} - title: "${page.title}", emails: ${page.emails.length}, phones: ${page.phones.length}`);
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    const scrapedSource = formatScrapedData(scrapedPages);
     if (scrapedSource) {
       sourceData.push(scrapedSource);
       sourcesUsed.push(`Scraping (${scrapedPages.length} URLs)`);
