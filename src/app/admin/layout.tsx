@@ -64,12 +64,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Sidebar */}
           <aside className="lg:w-56 shrink-0">
             <nav className="bg-white rounded-xl shadow-sm overflow-hidden">
-              {adminLinks.map(link => (
+              {adminLinks.map(link => {
+                // Check if this specific link should be active
+                // For exact matches or child routes, but not when a more specific sibling link matches
+                const isActive = pathname === link.href ||
+                  (link.href !== "/admin" && pathname.startsWith(link.href + "/") &&
+                    !adminLinks.some(other => other.href !== link.href && other.href.startsWith(link.href + "/") && pathname.startsWith(other.href)));
+                return (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={`flex items-center gap-3 px-4 py-3 text-sm font-medium border-b border-gray-50 transition-colors ${
-                    pathname === link.href || (link.href !== "/admin" && pathname.startsWith(link.href + "/"))
+                    isActive
                       ? "bg-[#004D98] text-white"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}
@@ -77,7 +83,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <span>{link.icon}</span>
                   <span>{link.label}</span>
                 </Link>
-              ))}
+              );
+              })}
             </nav>
           </aside>
 

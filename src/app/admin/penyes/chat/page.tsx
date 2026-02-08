@@ -23,6 +23,37 @@ interface RAGStats {
   chunksByType: Record<string, number>;
 }
 
+function renderMarkdown(text: string): string {
+  let html = text
+    // Escape HTML
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // Headers (## and ###)
+    .replace(/^### (.+)$/gm, '<h4 class="font-bold text-sm mt-3 mb-1">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="font-bold text-base mt-3 mb-1">$1</h3>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code class="bg-gray-200 px-1 py-0.5 rounded text-xs font-mono">$1</code>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-blue-600 underline hover:text-blue-800">$1</a>')
+    // Unordered lists (- item)
+    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Ordered lists (1. item)
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+    // Wrap consecutive <li> in <ul>
+    .replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, '<ul class="my-1 space-y-0.5">$1</ul>')
+    // Paragraphs (double newlines)
+    .replace(/\n\n/g, '</p><p class="mt-2">')
+    // Single newlines to <br>
+    .replace(/\n/g, '<br/>');
+
+  return `<p>${html}</p>`;
+}
+
 const CHUNK_TYPE_LABELS: Record<string, string> = {
   basic_info: "Info general",
   contact: "Contacto",
@@ -47,7 +78,9 @@ export default function PenyaChatPage() {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const fetchStats = async () => {
@@ -182,7 +215,14 @@ export default function PenyaChatPage() {
                       ? "bg-[#004D98] text-white"
                       : "bg-gray-100 text-gray-800"
                   }`}>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    {msg.role === "user" ? (
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    ) : (
+                      <div
+                        className="text-sm leading-relaxed prose-sm prose-headings:text-gray-800 prose-strong:text-gray-800 prose-a:text-blue-600"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                      />
+                    )}
                   </div>
 
                   {/* Sources */}

@@ -11,8 +11,11 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "25", 10)));
 
+  const status = searchParams.get("status");
+
   const where: Record<string, unknown> = {};
   if (region && region !== "all") where.region = region;
+  if (status) where.enrichmentStatus = status;
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },

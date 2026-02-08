@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import CookieBanner from "@/components/CookieBanner";
+import LayoutWrapper from "@/components/LayoutWrapper";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import { LanguageProvider } from "@/lib/LanguageContext";
 
@@ -128,10 +126,7 @@ export default function RootLayout({
       <body>
         <GoogleAnalytics />
         <LanguageProvider>
-          <Navbar />
-          <main className="min-h-screen">{children}</main>
-          <Footer />
-          <CookieBanner />
+          <LayoutWrapper>{children}</LayoutWrapper>
         </LanguageProvider>
       </body>
     </html>

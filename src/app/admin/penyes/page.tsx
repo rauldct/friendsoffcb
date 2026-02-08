@@ -47,6 +47,14 @@ interface Pagination {
   totalPages: number;
 }
 
+interface BulkLogEntry {
+  name: string;
+  city: string;
+  status: "success" | "error" | "running";
+  message?: string;
+  time: string;
+}
+
 export default function AdminPenyesPage() {
   const [penyes, setPenyes] = useState<Penya[]>([]);
   const [counts, setCounts] = useState<Counts>({ total: 0, cataluna: 0, spain: 0, world: 0 });
@@ -65,10 +73,28 @@ export default function AdminPenyesPage() {
   // Slide-over state
   const [selectedPenya, setSelectedPenya] = useState<Penya | null>(null);
   const [slideOpen, setSlideOpen] = useState(false);
-  const [enriching, setEnriching] = useState<string | null>(null); // penya id being enriched
+  const [enriching, setEnriching] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [showValidationModal, setShowValidationModal] = useState(false);
+
+  // Bulk enrichment state
+  const [showBulkPrompt, setShowBulkPrompt] = useState(false);
+  const [bulkCount, setBulkCount] = useState("10");
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkLogs, setBulkLogs] = useState<BulkLogEntry[]>([]);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [bulkDone, setBulkDone] = useState(false);
+  const bulkAbortRef = useRef(false);
+  const bulkLogsEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (bulkModalOpen) {
+      bulkLogsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [bulkLogs, bulkModalOpen]);
 
   // Debounce search
   useEffect(() => {
@@ -126,9 +152,7 @@ export default function AdminPenyesPage() {
       const res = await fetch(`/api/admin/penyes/${penyaId}/enrich`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        // Refresh the list to update status dot
         await fetchPenyes();
-        // If this penya is currently open in the slide-over, refresh it
         if (selectedPenya?.id === penyaId) {
           const detailRes = await fetch(`/api/admin/penyes/${penyaId}`);
           const detail = await detailRes.json();
@@ -137,13 +161,123 @@ export default function AdminPenyesPage() {
         }
       }
     } catch {
-      // silently fail, the status dot will show "failed"
+      // silently fail
     }
     setEnriching(null);
   };
 
+  // ========== BULK ENRICHMENT ==========
+
+  const startBulkEnrich = async () => {
+    const count = Math.max(1, Math.min(200, parseInt(bulkCount) || 10));
+    setShowBulkPrompt(false);
+    setBulkRunning(true);
+    setBulkModalOpen(true);
+    setBulkDone(false);
+    setBulkLogs([]);
+    setBulkProgress({ current: 0, total: 0 });
+    bulkAbortRef.current = false;
+
+    try {
+      // Fetch pending peñas (those without enrichment data)
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("pageSize", String(count));
+      params.set("status", "pending");
+      const res = await fetch(`/api/admin/penyes?${params}`);
+      const data = await res.json();
+
+      // Filter to only pending ones
+      const pending: Penya[] = (data.penyes || []).filter(
+        (p: Penya) => p.enrichmentStatus === "pending" || p.enrichmentStatus === "failed"
+      );
+
+      if (pending.length === 0) {
+        // Try fetching more pages to find pending ones
+        const bigRes = await fetch(`/api/admin/penyes?page=1&pageSize=${count * 2}`);
+        const bigData = await bigRes.json();
+        const morePending: Penya[] = (bigData.penyes || []).filter(
+          (p: Penya) => p.enrichmentStatus === "pending" || p.enrichmentStatus === "failed"
+        );
+        if (morePending.length === 0) {
+          setBulkLogs([{ name: "-", city: "-", status: "error", message: "No pending penyes found to enrich", time: new Date().toLocaleTimeString() }]);
+          setBulkDone(true);
+          setBulkRunning(false);
+          return;
+        }
+        pending.push(...morePending);
+      }
+
+      const toProcess = pending.slice(0, count);
+      setBulkProgress({ current: 0, total: toProcess.length });
+
+      for (let i = 0; i < toProcess.length; i++) {
+        if (bulkAbortRef.current) {
+          setBulkLogs(prev => [...prev, {
+            name: "---", city: "---", status: "error",
+            message: `Stopped by user (${i}/${toProcess.length})`,
+            time: new Date().toLocaleTimeString(),
+          }]);
+          break;
+        }
+
+        const p = toProcess[i];
+        setBulkProgress({ current: i + 1, total: toProcess.length });
+
+        // Add "running" entry
+        setBulkLogs(prev => [...prev, {
+          name: p.name, city: p.city, status: "running",
+          message: `Enriching... (${i + 1}/${toProcess.length})`,
+          time: new Date().toLocaleTimeString(),
+        }]);
+
+        try {
+          const enrichRes = await fetch(`/api/admin/penyes/${p.id}/enrich`, { method: "POST" });
+          const enrichData = await enrichRes.json();
+
+          // Update last log entry with result
+          setBulkLogs(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              name: p.name, city: p.city,
+              status: enrichData.success ? "success" : "error",
+              message: enrichData.success ? "Enriched successfully" : (enrichData.error || "Failed"),
+              time: new Date().toLocaleTimeString(),
+            };
+            return updated;
+          });
+        } catch {
+          setBulkLogs(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              name: p.name, city: p.city, status: "error",
+              message: "Connection error",
+              time: new Date().toLocaleTimeString(),
+            };
+            return updated;
+          });
+        }
+      }
+    } catch (err) {
+      setBulkLogs(prev => [...prev, {
+        name: "---", city: "---", status: "error",
+        message: `Fatal error: ${err instanceof Error ? err.message : "Unknown"}`,
+        time: new Date().toLocaleTimeString(),
+      }]);
+    }
+
+    setBulkDone(true);
+    setBulkRunning(false);
+    fetchPenyes();
+  };
+
+  const stopBulkEnrich = () => {
+    bulkAbortRef.current = true;
+  };
+
+  // ========== END BULK ==========
+
   const openSlideOver = async (penya: Penya) => {
-    // Fetch full details
     const res = await fetch(`/api/admin/penyes/${penya.id}`);
     const detail = await res.json();
     setSelectedPenya(detail);
@@ -262,6 +396,9 @@ export default function AdminPenyesPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const bulkSuccessCount = bulkLogs.filter(l => l.status === "success").length;
+  const bulkErrorCount = bulkLogs.filter(l => l.status === "error").length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -274,6 +411,13 @@ export default function AdminPenyesPage() {
               Last sync: {formatDate(lastSync)}
             </span>
           )}
+          <button
+            onClick={() => setShowBulkPrompt(true)}
+            disabled={bulkRunning}
+            className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 transition-all text-sm font-medium"
+          >
+            Bulk Enrich AI
+          </button>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -288,6 +432,37 @@ export default function AdminPenyesPage() {
         <div className={`p-3 rounded-lg text-sm ${syncResult.startsWith("Error") ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
           {syncResult}
         </div>
+      )}
+
+      {/* Floating indicator when bulk is running but modal is closed */}
+      {bulkRunning && !bulkModalOpen && (
+        <button
+          onClick={() => setBulkModalOpen(true)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all animate-pulse"
+        >
+          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-sm font-medium">
+            Enriching {bulkProgress.current}/{bulkProgress.total}...
+          </span>
+        </button>
+      )}
+
+      {/* Floating indicator when bulk is done but modal was closed */}
+      {bulkDone && !bulkRunning && !bulkModalOpen && bulkLogs.length > 0 && (
+        <button
+          onClick={() => setBulkModalOpen(true)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-green-600 text-white rounded-xl shadow-lg hover:shadow-xl transition-all"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-sm font-medium">
+            Bulk done: {bulkSuccessCount} OK, {bulkErrorCount} errors
+          </span>
+        </button>
       )}
 
       {/* Stats */}
@@ -425,6 +600,168 @@ export default function AdminPenyesPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk Enrich Prompt Modal */}
+      {showBulkPrompt && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowBulkPrompt(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full">
+              <div className="px-6 py-4 border-b">
+                <h3 className="text-base font-bold text-[#1A1A2E]">Bulk Enrich with AI</h3>
+                <p className="text-xs text-gray-500 mt-1">Search and enrich penyes that have no data yet</p>
+              </div>
+              <div className="px-6 py-5">
+                <label className="block text-sm font-medium text-gray-700 mb-2">How many penyes to enrich?</label>
+                <div className="flex gap-2 mb-4">
+                  {["5", "10", "25", "50"].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setBulkCount(n)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        bulkCount === n
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={bulkCount}
+                  onChange={e => setBulkCount(e.target.value)}
+                  min={1}
+                  max={200}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="Custom number..."
+                />
+                <p className="text-xs text-gray-400 mt-2">Each penya takes ~30-60s. {bulkCount} penyes = ~{Math.ceil((parseInt(bulkCount) || 10) * 0.75)} min</p>
+              </div>
+              <div className="px-6 py-4 border-t bg-gray-50 rounded-b-xl flex gap-3">
+                <button
+                  onClick={() => setShowBulkPrompt(false)}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={startBulkEnrich}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all text-sm font-medium"
+                >
+                  Start
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bulk Progress Modal */}
+      {bulkModalOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setBulkModalOpen(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+              {/* Header */}
+              <div className="px-6 py-4 border-b flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-[#1A1A2E]">
+                    {bulkRunning ? "Bulk Enrichment in Progress..." : "Bulk Enrichment Complete"}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {bulkProgress.current}/{bulkProgress.total} penyes processed
+                    {bulkDone && ` - ${bulkSuccessCount} OK, ${bulkErrorCount} errors`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setBulkModalOpen(false)}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                  title={bulkRunning ? "Minimize (process continues in background)" : "Close"}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Progress bar */}
+              <div className="px-6 py-2 bg-gray-50 border-b">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>{bulkRunning ? "Processing..." : "Done"}</span>
+                  <span>{bulkProgress.total > 0 ? Math.round((bulkProgress.current / bulkProgress.total) * 100) : 0}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${bulkDone ? "bg-green-500" : "bg-indigo-500"}`}
+                    style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Logs */}
+              <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1.5 min-h-[200px]">
+                {bulkLogs.map((log, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    <span className="text-gray-400 font-mono shrink-0 w-16">{log.time}</span>
+                    <span className="shrink-0">
+                      {log.status === "running" && (
+                        <svg className="w-3.5 h-3.5 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      )}
+                      {log.status === "success" && (
+                        <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      {log.status === "error" && (
+                        <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className={`font-medium ${log.status === "error" ? "text-red-600" : "text-gray-700"}`}>
+                      {log.name !== "---" ? `${log.name} (${log.city})` : ""}
+                    </span>
+                    <span className="text-gray-400">{log.message}</span>
+                  </div>
+                ))}
+                <div ref={bulkLogsEndRef} />
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-3 border-t bg-gray-50 rounded-b-xl flex gap-3">
+                {bulkRunning ? (
+                  <>
+                    <button
+                      onClick={() => setBulkModalOpen(false)}
+                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                    >
+                      Minimize
+                    </button>
+                    <button
+                      onClick={stopBulkEnrich}
+                      className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                    >
+                      Stop
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => { setBulkModalOpen(false); setBulkLogs([]); setBulkDone(false); }}
+                    className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Website Validation Modal */}
       {showValidationModal && selectedPenya?.websiteValidation && (
@@ -595,7 +932,7 @@ export default function AdminPenyesPage() {
                         type="button"
                         onClick={() => setShowValidationModal(true)}
                         className="text-indigo-500 hover:text-indigo-700 transition-colors"
-                        title="Why we think this is the peña's website"
+                        title="Why we think this is the penya's website"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
