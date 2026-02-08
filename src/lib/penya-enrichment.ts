@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
+import * as cheerio from "cheerio";
 
 // ============== API KEY HELPERS ==============
 
@@ -13,7 +14,6 @@ async function getSettingKey(key: string): Promise<string> {
 }
 
 const getAnthropicKey = () => getSettingKey("ANTHROPIC_API_KEY");
-const getSerperApiKey = () => getSettingKey("SERPER_API_KEY");
 const getPerplexityApiKey = () => getSettingKey("PERPLEXITY_API_KEY");
 const getGrokApiKey = () => getSettingKey("GROK_API_KEY");
 
@@ -25,7 +25,7 @@ interface EnrichmentResult {
   email: string | null;
   phone: string | null;
   website: string | null;
-  socialMedia: { facebook?: string; twitter?: string; instagram?: string } | null;
+  socialMedia: { facebook?: string; twitter?: string; instagram?: string; tiktok?: string } | null;
   president: string | null;
   foundedYear: number | null;
   memberCount: number | null;
@@ -38,68 +38,178 @@ interface SourceData {
   snippets: string;
 }
 
-// ============== STEP 1: GOOGLE SEARCH (SERPER.DEV) ==============
+// ============== URL EXTRACTION ==============
 
-async function searchGoogle(name: string, city: string, country: string): Promise<SourceData | null> {
-  const apiKey = await getSerperApiKey();
-  if (!apiKey) {
-    console.log("[Enrichment] Serper API key not configured, skipping Google search");
-    return null;
-  }
+function extractUrls(text: string): string[] {
+  const urlRegex = /https?:\/\/[^\s"'<>)\]]+/g;
+  const matches = text.match(urlRegex) || [];
+  // Deduplicate and clean trailing punctuation
+  const cleaned = matches.map(u => u.replace(/[.,;:!?)]+$/, ""));
+  return [...new Set(cleaned)];
+}
 
+// Domains to skip (not peña websites)
+const SKIP_DOMAINS = [
+  "facebook.com", "fb.com", "fb.me", "twitter.com", "x.com", "instagram.com",
+  "youtube.com", "tiktok.com", "linkedin.com", "wikipedia.org", "wikidata.org",
+  "google.com", "fcbarcelona.com", "penyes.fcbarcelona.com",
+  "marca.com", "sport.es", "mundodeportivo.com", "as.com",
+  "tripadvisor.com", "yelp.com", "maps.google.com",
+  "perplexity.ai", "serper.dev", "api.x.ai",
+];
+
+function isScrapableUrl(url: string): boolean {
   try {
-    const query = `"${name}" peña barcelonista ${city} ${country} contact`;
-    const res = await fetch("https://google.serper.dev/search", {
-      method: "POST",
+    const hostname = new URL(url).hostname.replace("www.", "");
+    return !SKIP_DOMAINS.some(d => hostname === d || hostname.endsWith("." + d));
+  } catch {
+    return false;
+  }
+}
+
+// ============== WEB SCRAPING ==============
+
+interface ScrapedPage {
+  url: string;
+  title: string;
+  description: string;
+  emails: string[];
+  phones: string[];
+  socialLinks: { facebook?: string; twitter?: string; instagram?: string; tiktok?: string };
+  bodyText: string; // First ~2000 chars of visible text
+}
+
+async function scrapePage(url: string): Promise<ScrapedPage | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, {
       headers: {
-        "X-API-KEY": apiKey,
-        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; FriendsOfBarca/1.0; +https://friendsofbarca.com)",
+        Accept: "text/html,application/xhtml+xml",
       },
-      body: JSON.stringify({ q: query, num: 8 }),
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("text/html")) return null;
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    // Remove scripts, styles, nav, footer noise
+    $("script, style, nav, footer, header, noscript, iframe").remove();
+
+    // Title
+    const title = $("title").text().trim() ||
+      $('meta[property="og:title"]').attr("content")?.trim() || "";
+
+    // Meta description
+    const description = $('meta[name="description"]').attr("content")?.trim() ||
+      $('meta[property="og:description"]').attr("content")?.trim() || "";
+
+    // Emails from text + mailto links
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const bodyHtml = $.html();
+    const emailsFromText = bodyHtml.match(emailRegex) || [];
+    const emailsFromLinks: string[] = [];
+    $('a[href^="mailto:"]').each((_, el) => {
+      const href = $(el).attr("href") || "";
+      const email = href.replace("mailto:", "").split("?")[0].trim();
+      if (email) emailsFromLinks.push(email);
+    });
+    const allEmails = [...new Set([...emailsFromLinks, ...emailsFromText])]
+      .filter(e => !e.includes("example.com") && !e.includes("sentry"));
+
+    // Phone numbers from tel: links + text patterns
+    const phones: string[] = [];
+    $('a[href^="tel:"]').each((_, el) => {
+      const href = $(el).attr("href") || "";
+      const phone = href.replace("tel:", "").trim();
+      if (phone) phones.push(phone);
+    });
+    // Also look for phone patterns in text
+    const phoneRegex = /(?:\+\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}[\s.-]?\d{0,4}/g;
+    const bodyTextRaw = $("body").text();
+    const phonesFromText = bodyTextRaw.match(phoneRegex) || [];
+    // Filter: at least 9 digits
+    for (const p of phonesFromText) {
+      const digits = p.replace(/\D/g, "");
+      if (digits.length >= 9 && digits.length <= 15) phones.push(p.trim());
+    }
+    const uniquePhones = [...new Set(phones)].slice(0, 3);
+
+    // Social media links
+    const socialLinks: { facebook?: string; twitter?: string; instagram?: string; tiktok?: string } = {};
+    $("a[href]").each((_, el) => {
+      const href = $(el).attr("href") || "";
+      if (href.includes("facebook.com/") && !socialLinks.facebook) {
+        socialLinks.facebook = href.split("?")[0];
+      }
+      if ((href.includes("twitter.com/") || href.includes("x.com/")) && !socialLinks.twitter) {
+        socialLinks.twitter = href.split("?")[0];
+      }
+      if (href.includes("instagram.com/") && !socialLinks.instagram) {
+        socialLinks.instagram = href.split("?")[0];
+      }
+      if (href.includes("tiktok.com/") && !socialLinks.tiktok) {
+        socialLinks.tiktok = href.split("?")[0];
+      }
     });
 
-    if (!res.ok) {
-      console.error(`[Enrichment] Serper API error: ${res.status}`);
-      return null;
-    }
-
-    const data = await res.json();
-    const snippets: string[] = [];
-
-    // Organic results
-    if (data.organic) {
-      for (const r of data.organic.slice(0, 6)) {
-        snippets.push(`[${r.title}] ${r.snippet || ""} (${r.link})`);
-      }
-    }
-
-    // Knowledge graph
-    if (data.knowledgeGraph) {
-      const kg = data.knowledgeGraph;
-      const parts = [];
-      if (kg.title) parts.push(`Name: ${kg.title}`);
-      if (kg.description) parts.push(`Description: ${kg.description}`);
-      if (kg.website) parts.push(`Website: ${kg.website}`);
-      if (kg.phone) parts.push(`Phone: ${kg.phone}`);
-      if (kg.address) parts.push(`Address: ${kg.address}`);
-      if (parts.length > 0) snippets.push(`[Knowledge Graph] ${parts.join(" | ")}`);
-    }
-
-    if (snippets.length === 0) return null;
+    // Visible body text (cleaned)
+    const bodyText = $("body").text()
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 2000);
 
     return {
-      source: "Google (Serper)",
-      snippets: snippets.join("\n"),
+      url,
+      title,
+      description,
+      emails: allEmails.slice(0, 5),
+      phones: uniquePhones,
+      socialLinks,
+      bodyText,
     };
   } catch (err) {
-    console.error("[Enrichment] Google search error:", err);
+    console.error(`[Scrape] Error scraping ${url}:`, err instanceof Error ? err.message : err);
     return null;
   }
 }
 
-// ============== STEP 2: PERPLEXITY SONAR ==============
+function formatScrapedData(pages: ScrapedPage[]): SourceData | null {
+  if (pages.length === 0) return null;
 
-async function searchPerplexity(name: string, city: string, country: string, googleContext: string): Promise<SourceData | null> {
+  const parts = pages.map(p => {
+    const lines: string[] = [];
+    lines.push(`URL: ${p.url}`);
+    if (p.title) lines.push(`Page title: ${p.title}`);
+    if (p.description) lines.push(`Meta description: ${p.description}`);
+    if (p.emails.length > 0) lines.push(`Emails found: ${p.emails.join(", ")}`);
+    if (p.phones.length > 0) lines.push(`Phones found: ${p.phones.join(", ")}`);
+    if (p.socialLinks.facebook) lines.push(`Facebook: ${p.socialLinks.facebook}`);
+    if (p.socialLinks.twitter) lines.push(`Twitter: ${p.socialLinks.twitter}`);
+    if (p.socialLinks.instagram) lines.push(`Instagram: ${p.socialLinks.instagram}`);
+    if (p.socialLinks.tiktok) lines.push(`TikTok: ${p.socialLinks.tiktok}`);
+    if (p.bodyText) lines.push(`Page content (excerpt): ${p.bodyText.slice(0, 1000)}`);
+    return lines.join("\n");
+  });
+
+  return {
+    source: "Web Scraping (direct visit)",
+    snippets: parts.join("\n\n---\n\n"),
+  };
+}
+
+// ============== STEP 1: PERPLEXITY SONAR ==============
+
+async function searchPerplexity(name: string, city: string, country: string): Promise<SourceData | null> {
   const apiKey = await getPerplexityApiKey();
   if (!apiKey) {
     console.log("[Enrichment] Perplexity API key not configured, skipping");
@@ -107,10 +217,6 @@ async function searchPerplexity(name: string, city: string, country: string, goo
   }
 
   try {
-    const contextHint = googleContext
-      ? `\n\nHere is some initial context from web search:\n${googleContext.slice(0, 1000)}`
-      : "";
-
     const res = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
@@ -127,11 +233,10 @@ async function searchPerplexity(name: string, city: string, country: string, goo
 Name: ${name}
 City: ${city}
 Country: ${country}
-${contextHint}
 
-I need: physical address, postal code, email, phone, website, social media links (Facebook, Twitter/X, Instagram), president/leader name, founding year, member count, and a brief description.
+I need: their official website URL, physical address, postal code, email, phone, social media links (Facebook, Twitter/X, Instagram, TikTok), president/leader name, founding year, member count, and a brief description.
 
-Provide all the factual data you can find. Be specific with URLs and contact details.`,
+IMPORTANT: If you find their website URL, make sure to include it. Provide all the factual data you can find. Be specific with URLs and contact details.`,
           },
         ],
       }),
@@ -146,10 +251,9 @@ Provide all the factual data you can find. Be specific with URLs and contact det
     const content = data.choices?.[0]?.message?.content || "";
     if (!content) return null;
 
-    // Include citations if available
     let citations = "";
     if (data.citations && Array.isArray(data.citations)) {
-      citations = "\nSources: " + data.citations.join(", ");
+      citations = "\nSource URLs: " + data.citations.join(", ");
     }
 
     return {
@@ -162,7 +266,7 @@ Provide all the factual data you can find. Be specific with URLs and contact det
   }
 }
 
-// ============== STEP 3: GROK (XAI) ==============
+// ============== STEP 2: GROK (XAI) ==============
 
 async function searchGrok(name: string, city: string, country: string): Promise<SourceData | null> {
   const apiKey = await getGrokApiKey();
@@ -188,9 +292,9 @@ Name: ${name}
 City: ${city}
 Country: ${country}
 
-I need factual details: address, email, phone, website URL, social media profiles (Facebook, Twitter/X, Instagram), president name, founding year, number of members, and description.
+I need factual details: their official website URL, address, email, phone, social media profiles (Facebook, Twitter/X, Instagram, TikTok), president name, founding year, number of members, and description.
 
-Provide only verified data. Include URLs where possible.`,
+IMPORTANT: Include the website URL if you find one. Provide only verified data with URLs where possible.`,
           },
         ],
       }),
@@ -213,6 +317,42 @@ Provide only verified data. Include URLs where possible.`,
     console.error("[Enrichment] Grok search error:", err);
     return null;
   }
+}
+
+// ============== STEP 3: SCRAPE DISCOVERED URLS ==============
+
+async function scrapeDiscoveredUrls(
+  sourceData: SourceData[],
+  penyaName: string
+): Promise<{ scrapedSource: SourceData | null; urlsVisited: string[] }> {
+  // Collect all URLs mentioned in source data
+  const allText = sourceData.map(s => s.snippets).join("\n");
+  const urls = extractUrls(allText).filter(isScrapableUrl);
+
+  if (urls.length === 0) {
+    console.log(`[Enrichment] ${penyaName}: No scrapable URLs found in source data`);
+    return { scrapedSource: null, urlsVisited: [] };
+  }
+
+  // Limit to first 3 URLs to avoid excessive scraping
+  const toScrape = urls.slice(0, 3);
+  console.log(`[Enrichment] ${penyaName}: Scraping ${toScrape.length} URLs: ${toScrape.join(", ")}`);
+
+  const scrapedPages: ScrapedPage[] = [];
+  for (const url of toScrape) {
+    const page = await scrapePage(url);
+    if (page) {
+      scrapedPages.push(page);
+      console.log(`[Enrichment] ${penyaName}: Scraped ${url} - title: "${page.title}", emails: ${page.emails.length}, phones: ${page.phones.length}`);
+    }
+    // Small delay between scrapes
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return {
+    scrapedSource: formatScrapedData(scrapedPages),
+    urlsVisited: toScrape,
+  };
 }
 
 // ============== STEP 4: CLAUDE SYNTHESIS ==============
@@ -238,7 +378,7 @@ async function claudeSynthesize(
     ? sources.map((s) => `--- ${s.source} ---\n${s.snippets}`).join("\n\n")
     : "(No external data sources available - use only your knowledge)";
 
-  const prompt = `You are a data analyst. Synthesize all the information below about this FC Barcelona supporters club (peña barcelonista) into a structured JSON.
+  const prompt = `You are a data analyst specializing in FC Barcelona supporter clubs. Synthesize all the information below into structured data.
 
 PEÑA DETAILS:
 Name: ${name}
@@ -247,16 +387,18 @@ ${province ? `Province: ${province}` : ""}
 Country: ${country}
 Region: ${region === "cataluna" ? "Catalunya" : region === "spain" ? "Spain" : "International"}
 
-DATA FROM EXTERNAL SOURCES:
+DATA FROM SOURCES (including AI search results and direct web scraping):
 ${sourcesText}
 
 INSTRUCTIONS:
-- Cross-reference data from different sources to find the most reliable information
+- The "Web Scraping (direct visit)" source contains DATA EXTRACTED DIRECTLY FROM WEBSITES - this is the most reliable source for contact details, emails, phones, and social media links
+- Cross-reference all sources. Data from scraped websites takes priority over AI-generated guesses
 - Only include data you are confident about; use null for uncertain fields
-- Prefer data that appears in multiple sources
+- For the website field: use the URL that was successfully scraped and is clearly the peña's own site (not a directory or news site)
 - Validate URLs format (must start with http:// or https://)
 - Validate email format (must contain @)
 - Phone numbers should include country code if international
+- For description: write it in English, 2-3 sentences based on the real data found
 
 Respond ONLY with valid JSON (no markdown, no code blocks):
 {
@@ -265,18 +407,18 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
   "email": "Contact email or null if unknown",
   "phone": "Phone number or null if unknown",
   "website": "Website URL or null if unknown",
-  "socialMedia": { "facebook": "URL or null", "twitter": "URL or null", "instagram": "URL or null" },
+  "socialMedia": { "facebook": "URL or null", "twitter": "URL or null", "instagram": "URL or null", "tiktok": "URL or null" },
   "president": "Current president/leader name or null if unknown",
   "foundedYear": 1990,
   "memberCount": 150,
-  "description": "Brief description of the peña (2-3 sentences) or null if unknown",
+  "description": "Brief description based on real data found (2-3 sentences) or null",
   "confidence": "high" | "medium" | "low"
 }
 
-Set confidence based on how many sources confirmed data:
-- "high": 2+ sources agree on key facts
-- "medium": 1 source with specific data
-- "low": mostly inferred or no external sources available`;
+Confidence levels:
+- "high": scraped website confirmed data, or 2+ sources agree
+- "medium": 1 source with specific data, partially confirmed by scraping
+- "low": mostly inferred, no website scraped, limited sources`;
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-5-20250929",
@@ -301,32 +443,31 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
   const sourceData: SourceData[] = [];
 
   try {
-    // Step 1: Google Search (Serper.dev)
-    console.log(`[Enrichment] ${name}: Step 1 - Google Search...`);
-    const googleResult = await searchGoogle(name, city, country);
-    if (googleResult) {
-      sourceData.push(googleResult);
-      sourcesUsed.push("Google");
-      console.log(`[Enrichment] ${name}: Google returned data`);
-    }
-
-    // Step 2: Perplexity Sonar (with Google context)
-    console.log(`[Enrichment] ${name}: Step 2 - Perplexity Sonar...`);
-    const googleContext = googleResult?.snippets || "";
-    const perplexityResult = await searchPerplexity(name, city, country, googleContext);
+    // Step 1: Perplexity Sonar (web search)
+    console.log(`[Enrichment] ${name}: Step 1 - Perplexity Sonar...`);
+    const perplexityResult = await searchPerplexity(name, city, country);
     if (perplexityResult) {
       sourceData.push(perplexityResult);
       sourcesUsed.push("Perplexity");
       console.log(`[Enrichment] ${name}: Perplexity returned data`);
     }
 
-    // Step 3: Grok (xAI)
-    console.log(`[Enrichment] ${name}: Step 3 - Grok...`);
+    // Step 2: Grok (xAI web search)
+    console.log(`[Enrichment] ${name}: Step 2 - Grok...`);
     const grokResult = await searchGrok(name, city, country);
     if (grokResult) {
       sourceData.push(grokResult);
       sourcesUsed.push("Grok");
       console.log(`[Enrichment] ${name}: Grok returned data`);
+    }
+
+    // Step 3: Scrape URLs discovered by Perplexity/Grok
+    console.log(`[Enrichment] ${name}: Step 3 - Scraping discovered URLs...`);
+    const { scrapedSource, urlsVisited } = await scrapeDiscoveredUrls(sourceData, name);
+    if (scrapedSource) {
+      sourceData.push(scrapedSource);
+      sourcesUsed.push(`Scraping (${urlsVisited.length} URLs)`);
+      console.log(`[Enrichment] ${name}: Scraped ${urlsVisited.length} URLs`);
     }
 
     // Step 4: Claude synthesis (always runs)
@@ -342,12 +483,13 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
     );
 
     // Sanitize social media
-    let socialMedia: { facebook?: string; twitter?: string; instagram?: string } | null = null;
+    let socialMedia: { facebook?: string; twitter?: string; instagram?: string; tiktok?: string } | null = null;
     if (parsed.socialMedia) {
       const sm: Record<string, string> = {};
       if (parsed.socialMedia.facebook) sm.facebook = parsed.socialMedia.facebook;
       if (parsed.socialMedia.twitter) sm.twitter = parsed.socialMedia.twitter;
       if (parsed.socialMedia.instagram) sm.instagram = parsed.socialMedia.instagram;
+      if (parsed.socialMedia.tiktok) sm.tiktok = parsed.socialMedia.tiktok;
       if (Object.keys(sm).length > 0) socialMedia = sm;
     }
 
