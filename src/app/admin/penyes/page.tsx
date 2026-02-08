@@ -27,6 +27,8 @@ interface Penya {
   memberCount: number | null;
   description: string | null;
   notes: string | null;
+  websiteValidation: string | null;
+  scrapedContent: unknown;
   enrichmentStatus: string;
   detailsUpdatedAt: string | null;
 }
@@ -66,6 +68,7 @@ export default function AdminPenyesPage() {
   const [enriching, setEnriching] = useState<string | null>(null); // penya id being enriched
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [showValidationModal, setShowValidationModal] = useState(false);
 
   // Debounce search
   useEffect(() => {
@@ -423,6 +426,62 @@ export default function AdminPenyesPage() {
         )}
       </div>
 
+      {/* Website Validation Modal */}
+      {showValidationModal && selectedPenya?.websiteValidation && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-[60]"
+            onClick={() => setShowValidationModal(false)}
+          />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+              <div className="px-6 py-4 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="text-base font-bold text-[#1A1A2E]">Website Validation</h3>
+                </div>
+                <button
+                  onClick={() => setShowValidationModal(false)}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto">
+                {selectedPenya.website && (
+                  <div className="mb-3 px-3 py-2 bg-gray-50 rounded-lg">
+                    <span className="text-xs text-gray-500">URL: </span>
+                    <a
+                      href={selectedPenya.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-indigo-600 hover:underline break-all"
+                    >
+                      {selectedPenya.website}
+                    </a>
+                  </div>
+                )}
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {selectedPenya.websiteValidation}
+                </p>
+              </div>
+              <div className="px-6 py-3 border-t bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={() => setShowValidationModal(false)}
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Slide-over panel */}
       {slideOpen && selectedPenya && (
         <>
@@ -529,7 +588,21 @@ export default function AdminPenyesPage() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Website</label>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <label className="block text-xs font-medium text-gray-500">Website</label>
+                    {selectedPenya?.websiteValidation && (
+                      <button
+                        type="button"
+                        onClick={() => setShowValidationModal(true)}
+                        className="text-indigo-500 hover:text-indigo-700 transition-colors"
+                        title="Why we think this is the peña's website"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="url"
                     value={(formData.website as string) || ""}

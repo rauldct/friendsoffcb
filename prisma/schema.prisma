@@ -161,12 +161,14 @@ model Penya {
   email            String?
   phone            String?
   website          String?
-  socialMedia      Json?    // { facebook?, twitter?, instagram? }
+  socialMedia      Json?    // { facebook?, twitter?, instagram?, tiktok? }
   president        String?
   foundedYear      Int?
   memberCount      Int?
   description      String?  @db.Text
   notes            String?  @db.Text
+  websiteValidation String? @db.Text  // AI explanation of why we think this website belongs to the peña
+  scrapedContent   Json?              // RAG: full scraped data from peña website { url, title, description, bodyText, emails, phones, socialLinks }
   enrichmentStatus String   @default("pending") // "pending" | "enriched" | "manual" | "failed"
   detailsUpdatedAt DateTime?
 
