@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model MatchPackage {
+  id              String   @id @default(uuid())
+  slug            String   @unique
+  matchTitle      String
+  competition     String
+  matchDate       DateTime
+  matchTime       String
+  opponent        String
+  opponentLogo    String   @default("")
+  heroImage       String   @default("")
+  description     String   @db.Text
+  tickets         Json
+  hotels          Json
+  activities      Json
+  tips            String[]
+  meetupInfo      String?
+  metaTitle       String
+  metaDescription String
+  status          String   @default("upcoming")
+  featured        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model BlogPost {
+  id                 String   @id @default(uuid())
+  slug               String   @unique
+  title              String
+  excerpt            String
+  content            String   @db.Text
+  coverImage         String   @default("")
+  category           String
+  tags               String[]
+  author             String   @default("Friends of Barça")
+  metaTitle          String
+  metaDescription    String
+  canonicalUrl       String?
+  relatedPackageSlug String?
+  publishedAt        DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  status             String   @default("published")
+}
+
+model Lead {
+  id              String   @id @default(uuid())
+  email           String
+  name            String?
+  matchInterested String?
+  groupSize       Int?
+  country         String?
+  message         String?
+  source          String
+  createdAt       DateTime @default(now())
+}
+
+model Subscriber {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  language     String   @default("en")
+  subscribedAt DateTime @default(now())
+  source       String
+  active       Boolean  @default(true)
+}
+
+model Match {
+  id           String   @id @default(uuid())
+  date         DateTime
+  time         String
+  opponent     String
+  opponentLogo String   @default("")
+  competition  String
+  venue        String
+  packageSlug  String?
+}
+
+model Setting {
+  key   String @id
+  value String @db.Text
+}
+
+model CompetitionData {
+  id                String   @id // "la-liga", "champions-league", "copa-del-rey"
+  name              String
+  season            String   @default("2025-2026")
+  emblemUrl         String   @default("")
+  standings         Json     @default("[]")
+  barcaPosition     Int      @default(0)
+  barcaPoints       Int      @default(0)
+  barcaPlayed       Int      @default(0)
+  barcaWon          Int      @default(0)
+  barcaDraw         Int      @default(0)
+  barcaLost         Int      @default(0)
+  barcaGoalsFor     Int      @default(0)
+  barcaGoalsAgainst Int      @default(0)
+  nextMatches       Json     @default("[]")
+  aiPrediction      String   @db.Text @default("")
+  aiExplanation     String   @db.Text @default("")
+  seasonForecast    String   @db.Text @default("")
+  seasonExplanation String   @db.Text @default("")
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+}
+
+model NewsArticle {
+  id              String   @id @default(uuid())
+  slug            String   @unique
+  title           String
+  excerpt         String
+  content         String   @db.Text
+  coverImage      String   @default("")
+  category        String   // "digest" | "chronicle"
+  sources         Json     @default("[]")
+  matchDate       DateTime?
+  matchResult     String?
+  author          String   @default("Friends of Barça AI")
+  metaTitle       String   @default("")
+  metaDescription String   @default("")
+  publishedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  status          String   @default("published")
+}
+
+model AutomationRun {
+  id        String    @id @default(uuid())
+  type      String    // "news_digest" | "match_chronicle" | "match_sync"
+  status    String    // "running" | "success" | "error"
+  message   String    @db.Text @default("")
+  details   Json      @default("{}")
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+}
+
+model RssSource {
+  id     String  @id @default(uuid())
+  name   String
+  url    String
+  active Boolean @default(true)
+}
+
+model Penya {
+  id        String   @id @default(uuid())
+  name      String
+  city      String
+  province  String   @default("")
+  country   String
+  region    String   // "cataluna", "spain", "world"
+
+  // Enrichment fields
+  address          String?
+  postalCode       String?
+  email            String?
+  phone            String?
+  website          String?
+  socialMedia      Json?    // { facebook?, twitter?, instagram? }
+  president        String?
+  foundedYear      Int?
+  memberCount      Int?
+  description      String?  @db.Text
+  notes            String?  @db.Text
+  enrichmentStatus String   @default("pending") // "pending" | "enriched" | "manual" | "failed"
+  detailsUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, city, country])
+}
+
+model AdminUser {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String   // bcrypt hash
+  name      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Photo {
+  id              String    @id @default(uuid())
+  filename        String    @unique
+  thumbnailName   String
+  originalName    String
+  fileSize        Int
+  mimeType        String
+  width           Int
+  height          Int
+  takenAt         DateTime?
+  location        String?
+  latitude        Float?
+  longitude       Float?
+  uploaderName    String
+  uploaderEmail   String
+  status          String    @default("pending")
+  rejectionReason String?
+  moderatedAt     DateTime?
+  createdAt       DateTime  @default(now())
+}

@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Montserrat:wght@600;700;800;900&display=swap');
+
+@layer base {
+  body {
+    @apply bg-white text-[#1A1A2E] antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Montserrat', sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#A50044] text-white font-bold py-3 px-6 rounded-lg hover:bg-red-800 transition-all duration-200 inline-block text-center;
+  }
+  .btn-secondary {
+    @apply bg-[#004D98] text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-900 transition-all duration-200 inline-block text-center;
+  }
+  .btn-gold {
+    @apply bg-[#EDBB00] text-[#1A1A2E] font-bold py-3 px-6 rounded-lg hover:bg-yellow-500 transition-all duration-200 inline-block text-center;
+  }
+  .card {
+    @apply bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden;
+  }
+  .section-padding {
+    @apply py-16 px-4 md:px-8 lg:px-16;
+  }
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
