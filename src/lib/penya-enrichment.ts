@@ -152,6 +152,197 @@ async function scrapePage(url: string): Promise<ScrapedPage | null> {
   }
 }
 
+// ============== SOCIAL MEDIA SCRAPING ==============
+
+const SOCIAL_DOMAINS = ["facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com"];
+
+function isSocialUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace("www.", "");
+    return SOCIAL_DOMAINS.some(d => hostname === d || hostname.endsWith("." + d));
+  } catch { return false; }
+}
+
+function extractSocialUrls(text: string): string[] {
+  const urls = extractUrls(text);
+  return [...new Set(urls.filter(isSocialUrl))];
+}
+
+interface SocialMediaData {
+  url: string;
+  platform: string;
+  name: string;
+  description: string;
+  address: string;
+  phone: string;
+  email: string;
+  extra: string;
+}
+
+async function scrapeSocialPage(url: string): Promise<SocialMediaData | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "es,en;q=0.9",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const hostname = new URL(url).hostname.replace("www.", "");
+    let platform = "unknown";
+    if (hostname.includes("facebook") || hostname.includes("fb.")) platform = "Facebook";
+    else if (hostname.includes("instagram")) platform = "Instagram";
+    else if (hostname.includes("twitter") || hostname.includes("x.com")) platform = "Twitter/X";
+
+    // Extract Open Graph tags (most reliable for social media)
+    const ogTitle = $('meta[property="og:title"]').attr("content")?.trim() || "";
+    const ogDesc = $('meta[property="og:description"]').attr("content")?.trim() || "";
+    const metaDesc = $('meta[name="description"]').attr("content")?.trim() || "";
+    const description = ogDesc || metaDesc;
+
+    // Try to find address from JSON-LD structured data
+    let address = "";
+    let phone = "";
+    let email = "";
+    const extraParts: string[] = [];
+
+    // Parse JSON-LD (Facebook pages often embed this)
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const json = JSON.parse($(el).html() || "{}");
+        const items = Array.isArray(json) ? json : [json];
+        for (const item of items) {
+          // Address from structured data
+          if (item.address) {
+            const addr = item.address;
+            if (typeof addr === "string") {
+              address = addr;
+            } else if (typeof addr === "object") {
+              const parts = [addr.streetAddress, addr.addressLocality, addr.postalCode, addr.addressRegion, addr.addressCountry].filter(Boolean);
+              if (parts.length > 0) address = parts.join(", ");
+            }
+          }
+          if (item.telephone && !phone) phone = item.telephone;
+          if (item.email && !email) email = item.email;
+          if (item.openingHours) extraParts.push(`Hours: ${Array.isArray(item.openingHours) ? item.openingHours.join(", ") : item.openingHours}`);
+          if (item.geo?.latitude) extraParts.push(`Coordinates: ${item.geo.latitude}, ${item.geo.longitude}`);
+          if (item.foundingDate) extraParts.push(`Founded: ${item.foundingDate}`);
+          if (item.memberOf?.name) extraParts.push(`Member of: ${item.memberOf.name}`);
+          if (item.numberOfEmployees) extraParts.push(`Members/employees: ${JSON.stringify(item.numberOfEmployees)}`);
+
+          // Check nested @graph
+          if (item["@graph"] && Array.isArray(item["@graph"])) {
+            for (const sub of item["@graph"]) {
+              if (sub.address && !address) {
+                const a = sub.address;
+                if (typeof a === "string") address = a;
+                else if (typeof a === "object") {
+                  const parts = [a.streetAddress, a.addressLocality, a.postalCode, a.addressRegion].filter(Boolean);
+                  if (parts.length > 0) address = parts.join(", ");
+                }
+              }
+              if (sub.telephone && !phone) phone = sub.telephone;
+            }
+          }
+        }
+      } catch { /* invalid JSON-LD */ }
+    });
+
+    // Facebook-specific: look for address patterns in HTML content
+    if (platform === "Facebook" && !address) {
+      const bodyText = $("body").text();
+      // Facebook pages sometimes show address in specific patterns
+      const addressMatch = bodyText.match(/(?:Dirección|Address|Ubicación|Location)[:\s]*([^·\n]{10,80})/i);
+      if (addressMatch) address = addressMatch[1].trim();
+    }
+
+    // Extract emails from page
+    if (!email) {
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const bodyHtml = $.html();
+      const emails = bodyHtml.match(emailRegex) || [];
+      const validEmails = emails.filter(e => !e.includes("example.com") && !e.includes("sentry") && !e.includes("facebook") && !e.includes("instagram"));
+      if (validEmails.length > 0) email = validEmails[0];
+    }
+
+    // Extract phone from tel: links
+    if (!phone) {
+      $('a[href^="tel:"]').each((_, el) => {
+        if (!phone) phone = ($(el).attr("href") || "").replace("tel:", "").trim();
+      });
+    }
+
+    // For Instagram, bio is typically in the og:description
+    // Format: "N Followers, N Following, N Posts - See Instagram photos and videos from @handle"
+    // or sometimes includes actual bio text
+
+    return {
+      url,
+      platform,
+      name: ogTitle,
+      description,
+      address,
+      phone,
+      email,
+      extra: extraParts.join("; "),
+    };
+  } catch (err) {
+    console.error(`[Social Scrape] Error scraping ${url}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function scrapeSocialMediaUrls(
+  sourceData: SourceData[],
+  penyaName: string
+): Promise<SourceData | null> {
+  const allText = sourceData.map(s => s.snippets).join("\n");
+  const socialUrls = extractSocialUrls(allText).slice(0, 4);
+
+  if (socialUrls.length === 0) {
+    console.log(`[Enrichment] ${penyaName}: No social media URLs found`);
+    return null;
+  }
+
+  console.log(`[Enrichment] ${penyaName}: Scraping ${socialUrls.length} social media pages...`);
+  const results: SocialMediaData[] = [];
+
+  for (const url of socialUrls) {
+    const data = await scrapeSocialPage(url);
+    if (data && (data.description || data.address || data.phone || data.email)) {
+      results.push(data);
+      console.log(`[Enrichment] ${penyaName}: Social ${data.platform} - name: "${data.name}", address: "${data.address}", phone: "${data.phone}"`);
+    }
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  if (results.length === 0) return null;
+
+  const snippets = results.map(r => {
+    const lines = [`Platform: ${r.platform}`, `URL: ${r.url}`];
+    if (r.name) lines.push(`Page name: ${r.name}`);
+    if (r.description) lines.push(`Description/Bio: ${r.description}`);
+    if (r.address) lines.push(`Address found: ${r.address}`);
+    if (r.phone) lines.push(`Phone found: ${r.phone}`);
+    if (r.email) lines.push(`Email found: ${r.email}`);
+    if (r.extra) lines.push(`Extra data: ${r.extra}`);
+    return lines.join("\n");
+  }).join("\n\n---\n\n");
+
+  return { source: "Social Media Scraping", snippets };
+}
+
 function formatScrapedData(pages: ScrapedPage[]): SourceData | null {
   if (pages.length === 0) return null;
   const parts = pages.map(p => {
@@ -371,9 +562,14 @@ DESCRIPTION INSTRUCTIONS:
 - If no website was scraped or validated, write based on available source data
 - 2-4 sentences, factual, not generic
 
+ADDRESS INSTRUCTIONS:
+- PRIORITIZE addresses found in social media pages (Facebook, Instagram) and scraped websites
+- If a Facebook page shows an address or location, use it - Facebook business pages are very reliable for addresses
+- Cross-reference addresses from different sources when possible
+
 Respond ONLY with valid JSON (no markdown, no code blocks):
 {
-  "address": "Full street address or null",
+  "address": "Full street address or null - check Facebook/Instagram data first",
   "postalCode": "Postal code or null",
   "email": "Contact email or null",
   "phone": "Phone number or null",
@@ -451,6 +647,14 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
     if (scrapedSource) {
       sourceData.push(scrapedSource);
       sourcesUsed.push(`Scraping (${scrapedPages.length} URLs)`);
+    }
+
+    // Step 3.5: Scrape social media pages for extra data (address, phone, bio)
+    console.log(`[Enrichment] ${name}: Step 3.5 - Scraping social media pages...`);
+    const socialData = await scrapeSocialMediaUrls(sourceData, name);
+    if (socialData) {
+      sourceData.push(socialData);
+      sourcesUsed.push("Social Media");
     }
 
     // Step 4: Claude synthesis + website validation
