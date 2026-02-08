@@ -29,8 +29,8 @@ export async function getAffiliateIds(): Promise<AffiliateIds> {
 // ============== URL GENERATORS ==============
 
 function stubhubUrl(matchTitle: string, affiliateId: string): string {
-  // StubHub FC Barcelona performer page
-  const base = "https://www.stubhub.com/fc-barcelona-barcelona-tickets/performer/2981/";
+  // StubHub FC Barcelona category page (current URL format)
+  const base = "https://www.stubhub.com/fc-barcelona-tickets/category/120817";
   if (!affiliateId) return base;
   return `${base}?gcid=${encodeURIComponent(affiliateId)}`;
 }
