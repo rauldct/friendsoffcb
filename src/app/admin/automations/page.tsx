@@ -77,6 +77,7 @@ export default function AdminAutomationsPage() {
     const labels: Record<string, string> = {
       news_digest: 'News Digest',
       match_chronicle: 'Match Chronicle',
+      auto_chronicle: 'Auto Chronicle',
       match_sync: 'Match Sync',
     };
     return labels[type] || type;
@@ -111,8 +112,9 @@ export default function AdminAutomationsPage() {
         </div>
         <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
+            { endpoint: '/api/automations/auto-chronicle', label: 'Auto Chronicle', icon: '{"📝"}', desc: "Generate yesterday's match chronicle (football-data.org)" },
             { endpoint: '/api/automations/news-digest', label: 'Generate Digest', icon: '{"📰"}', desc: 'Create news digest from RSS feeds' },
-            { endpoint: '/api/automations/match-chronicle', label: 'Check Match', icon: '{"⚽"}', desc: 'Generate chronicle if Barça played today' },
+            { endpoint: '/api/automations/match-chronicle', label: 'Check Match (legacy)', icon: '{"⚽"}', desc: 'Generate chronicle if Barça played today (API-Football)' },
             { endpoint: '/api/automations/sync-matches', label: 'Sync Calendar', icon: '{"🔄"}', desc: 'Sync matches from football API' },
             { endpoint: '/api/automations/seed', label: 'Seed 10 Weeks', icon: '{"🌱"}', desc: 'Generate retroactive content (slow)' },
           ].map((action) => (
@@ -177,10 +179,17 @@ export default function AdminAutomationsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">{"⚽"}</span>
+            <span className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">{"📝"}</span>
             <div>
-              <div className="font-medium text-[#1A1A2E]">Match Chronicle</div>
-              <div className="text-xs text-gray-500">Daily at 23:30 UTC (after matches end)</div>
+              <div className="font-medium text-[#1A1A2E]">Auto Chronicle (football-data.org)</div>
+              <div className="text-xs text-gray-500">Daily at 10:00 UTC (checks yesterday&apos;s matches)</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">{"⚽"}</span>
+            <div>
+              <div className="font-medium text-[#1A1A2E]">Match Chronicle (legacy)</div>
+              <div className="text-xs text-gray-500">Daily at 23:30 UTC (API-Football, fallback)</div>
             </div>
           </div>
           <div className="flex items-center gap-3">

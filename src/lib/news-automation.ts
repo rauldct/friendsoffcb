@@ -3,7 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { XMLParser } from "fast-xml-parser";
 
 const BARCA_ID = 529; // FC Barcelona ID in API-Football (api-sports.io)
+const BARCA_FD_ID = 81; // FC Barcelona ID in football-data.org
 const API_BASE = "https://v3.football.api-sports.io";
+const FD_BASE = "https://api.football-data.org/v4";
 
 function getCurrentSeason(): number {
   const now = new Date();
@@ -28,6 +30,14 @@ async function getFootballApiKey(): Promise<string> {
     if (s?.value) return s.value;
   } catch { /* fallback */ }
   return process.env.API_FOOTBALL_KEY || "";
+}
+
+async function getFootballDataApiKey(): Promise<string> {
+  try {
+    const s = await prisma.setting.findUnique({ where: { key: "FOOTBALL_DATA_API_KEY" } });
+    if (s?.value) return s.value;
+  } catch { /* fallback */ }
+  return process.env.FOOTBALL_DATA_API_KEY || "";
 }
 
 function slugify(text: string): string {
@@ -608,4 +618,194 @@ Respond ONLY with valid JSON:
   }
 
   return { chronicles, digests, errors };
+}
+
+// ============== AUTO CHRONICLE (football-data.org) ==============
+
+interface FDMatch {
+  id: number;
+  utcDate: string;
+  status: string;
+  homeTeam: { id: number; name: string; shortName: string; crest: string };
+  awayTeam: { id: number; name: string; shortName: string; crest: string };
+  score: {
+    winner: string | null;
+    fullTime: { home: number | null; away: number | null };
+    halfTime: { home: number | null; away: number | null };
+  };
+  competition: { id: number; name: string; code: string };
+  referees: Array<{ name: string; nationality: string }>;
+}
+
+export async function generateAutoChronicle(targetDate?: Date): Promise<string | null> {
+  const runId = crypto.randomUUID();
+  await prisma.automationRun.create({
+    data: { id: runId, type: "auto_chronicle", status: "running" },
+  });
+
+  try {
+    const fdKey = await getFootballDataApiKey();
+    if (!fdKey) throw new Error("FOOTBALL_DATA_API_KEY not configured");
+
+    const anthropicKey = await getAnthropicKey();
+    if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY not configured");
+
+    // Check yesterday's matches (or target date)
+    const checkDate = targetDate || new Date();
+    if (!targetDate) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+    const dateStr = checkDate.toISOString().slice(0, 10);
+
+    // Fetch Barça matches for this date from football-data.org
+    const res = await fetch(
+      `${FD_BASE}/teams/${BARCA_FD_ID}/matches?status=FINISHED&dateFrom=${dateStr}&dateTo=${dateStr}`,
+      {
+        headers: { "X-Auth-Token": fdKey },
+        cache: "no-store",
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`football-data.org API error ${res.status}: ${errText}`);
+    }
+
+    const data = await res.json();
+    const matches: FDMatch[] = data.matches || [];
+
+    if (matches.length === 0) {
+      await prisma.automationRun.update({
+        where: { id: runId },
+        data: {
+          status: "success",
+          message: `No Barcelona match on ${dateStr}.`,
+          endedAt: new Date(),
+        },
+      });
+      return null;
+    }
+
+    const match = matches[0];
+    const isHome = match.homeTeam.id === BARCA_FD_ID;
+    const opponent = isHome ? match.awayTeam.name : match.homeTeam.name;
+    const barcaGoals = isHome
+      ? (match.score.fullTime.home ?? 0)
+      : (match.score.fullTime.away ?? 0);
+    const opponentGoals = isHome
+      ? (match.score.fullTime.away ?? 0)
+      : (match.score.fullTime.home ?? 0);
+    const result =
+      barcaGoals > opponentGoals ? "win" : barcaGoals < opponentGoals ? "loss" : "draw";
+    const scoreStr = `${barcaGoals}-${opponentGoals}`;
+    const htHome = match.score.halfTime.home ?? 0;
+    const htAway = match.score.halfTime.away ?? 0;
+    const halfTimeScore = `${htHome}-${htAway}`;
+
+    // Generate slug
+    const existingSlug = slugify(
+      `barca-${result}-${opponent}-${scoreStr}-${dateStr}`
+    );
+
+    // Check if chronicle already exists
+    const existing = await prisma.newsArticle.findUnique({ where: { slug: existingSlug } });
+    if (existing) {
+      await prisma.automationRun.update({
+        where: { id: runId },
+        data: { status: "success", message: "Chronicle already exists for this match.", endedAt: new Date() },
+      });
+      return existing.id;
+    }
+
+    const matchDateObj = new Date(match.utcDate);
+    const referee = match.referees?.[0]?.name || "Unknown";
+    const competitionName = match.competition.name;
+    const venue = isHome ? "Spotify Camp Nou, Barcelona" : "Away";
+
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 3000,
+      messages: [
+        {
+          role: "user",
+          content: `You are a passionate sports journalist writing for FriendsOfBarca.com, a fan site dedicated to FC Barcelona.
+
+Write a detailed, engaging match chronicle based on the following data.
+
+MATCH DATA:
+- Competition: ${competitionName}
+- Date: ${matchDateObj.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+- ${match.homeTeam.name} ${match.score.fullTime.home} - ${match.score.fullTime.away} ${match.awayTeam.name}
+- Half-time: ${halfTimeScore}
+- Venue: ${venue}
+- Referee: ${referee}
+- Result for Barcelona: ${result.toUpperCase()}
+
+Write an engaging match report in English. The article should be 500-800 words. Use ## for section headers. Include:
+1. An engaging introduction
+2. First half summary
+3. Second half summary
+4. Key moments and player performances
+5. What this means for Barcelona's season
+
+Respond ONLY with valid JSON (no markdown code blocks):
+{
+  "title": "Engaging headline with score",
+  "excerpt": "2-3 sentence summary (max 200 chars)",
+  "content": "Full match report with ## section headers",
+  "metaTitle": "SEO title under 60 chars",
+  "metaDescription": "SEO description under 160 chars"
+}`,
+        },
+      ],
+    });
+
+    let text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Strip markdown code blocks if present
+    text = text.replace(/^```json\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const parsed = JSON.parse(text);
+
+    const article = await prisma.newsArticle.create({
+      data: {
+        slug: existingSlug,
+        title: parsed.title || `Barcelona ${scoreStr} ${opponent}`,
+        excerpt: parsed.excerpt || "",
+        content: parsed.content || "",
+        coverImage: "/images/packages/camp-nou-match.jpg",
+        category: "chronicle",
+        matchDate: matchDateObj,
+        matchResult: `${scoreStr} (${result})`,
+        sources: [{ name: "football-data.org", url: "https://www.football-data.org/" }],
+        author: "Friends of Barça AI",
+        metaTitle: parsed.metaTitle || "",
+        metaDescription: parsed.metaDescription || "",
+        publishedAt: matchDateObj,
+      },
+    });
+
+    await prisma.automationRun.update({
+      where: { id: runId },
+      data: {
+        status: "success",
+        message: `Auto chronicle created: "${parsed.title}"`,
+        details: {
+          articleId: article.id,
+          slug: existingSlug,
+          match: `${match.homeTeam.name} ${match.score.fullTime.home}-${match.score.fullTime.away} ${match.awayTeam.name}`,
+          competition: competitionName,
+        },
+        endedAt: new Date(),
+      },
+    });
+
+    return article.id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await prisma.automationRun.update({
+      where: { id: runId },
+      data: { status: "error", message: msg, endedAt: new Date() },
+    });
+    throw err;
+  }
 }
