@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import fs from "fs/promises";
 import path from "path";
 
-const ALLOWED_KEYS = ["ANTHROPIC_API_KEY", "GA_MEASUREMENT_ID", "API_FOOTBALL_KEY", "RESEND_API_KEY", "PERPLEXITY_API_KEY", "GROK_API_KEY", "FOOTBALL_DATA_API_KEY", "BRAVE_API_KEY"];
+const ALLOWED_KEYS = ["ANTHROPIC_API_KEY", "GA_MEASUREMENT_ID", "API_FOOTBALL_KEY", "RESEND_API_KEY", "PERPLEXITY_API_KEY", "GROK_API_KEY", "FOOTBALL_DATA_API_KEY", "BRAVE_API_KEY", "STUBHUB_AFFILIATE_ID", "BOOKING_AFFILIATE_ID", "GETYOURGUIDE_PARTNER_ID"];
 
 export async function GET() {
   const settings = await prisma.setting.findMany();

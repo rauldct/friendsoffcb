@@ -38,7 +38,7 @@ export default async function AdminSettingsPage() {
       prisma.photo.count(),
     ]);
 
-  const [anthropic, apiFootball, resend, footballData, perplexity, grok, brave, ga] =
+  const [anthropic, apiFootball, resend, footballData, perplexity, grok, brave, ga, stubhubAff, bookingAff, gygAff] =
     await Promise.all([
       getKeyStatus("ANTHROPIC_API_KEY"),
       getKeyStatus("API_FOOTBALL_KEY"),
@@ -48,21 +48,20 @@ export default async function AdminSettingsPage() {
       getKeyStatus("GROK_API_KEY"),
       getKeyStatus("BRAVE_API_KEY"),
       getKeyStatus("GA_MEASUREMENT_ID"),
+      getKeyStatus("STUBHUB_AFFILIATE_ID"),
+      getKeyStatus("BOOKING_AFFILIATE_ID"),
+      getKeyStatus("GETYOURGUIDE_PARTNER_ID"),
     ]);
 
   const totalKeys = 8;
   const configuredKeys = [anthropic, apiFootball, resend, footballData, perplexity, grok, brave, ga].filter(k => k.configured).length;
+  const totalAffiliates = 3;
+  const configuredAffiliates = [stubhubAff, bookingAff, gygAff].filter(k => k.configured).length;
 
   const envVars = [
     { key: "NEXT_PUBLIC_SITE_URL", value: process.env.NEXT_PUBLIC_SITE_URL || "Not set", sensitive: false },
     { key: "DATABASE_URL", value: process.env.DATABASE_URL ? "configured" : "Not set", sensitive: true },
     { key: "NODE_ENV", value: process.env.NODE_ENV || "Not set", sensitive: false },
-  ];
-
-  const affiliateLinks = [
-    { name: "StubHub", description: "Ticket affiliate links", status: "active", url: "stubhub.com" },
-    { name: "Booking.com", description: "Hotel affiliate links", status: "active", url: "booking.com" },
-    { name: "GetYourGuide", description: "Activity affiliate links", status: "active", url: "getyourguide.com" },
   ];
 
   return (
@@ -223,24 +222,54 @@ export default async function AdminSettingsPage() {
 
       {/* Affiliate Partners */}
       <div className="bg-white rounded-xl shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-heading font-bold text-[#1A1A2E]">Affiliate Partners</h2>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${configuredAffiliates === totalAffiliates ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+            {configuredAffiliates}/{totalAffiliates} active
+          </span>
         </div>
-        <div className="divide-y divide-gray-50">
-          {affiliateLinks.map(partner => (
-            <div key={partner.name} className="px-5 py-3 flex items-center justify-between">
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Affiliate IDs are injected automatically into all package links (tickets, hotels, activities). Leave empty to show links without tracking.</p>
+
+          {/* STUBHUB */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
               <div>
-                <span className="font-medium text-sm text-[#1A1A2E]">{partner.name}</span>
-                <p className="text-xs text-gray-500">{partner.description}</p>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">STUBHUB_AFFILIATE_ID</span>
+                <p className="text-xs text-gray-500 mt-0.5">StubHub ticket affiliate. Register at <a href="https://partners.stubhub.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">partners.stubhub.com</a></p>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400">{partner.url}</span>
-                <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">
-                  {partner.status}
-                </span>
-              </div>
+              <StatusBadge {...stubhubAff} />
             </div>
-          ))}
+            <SettingForm settingKey="STUBHUB_AFFILIATE_ID" placeholder="Your StubHub affiliate/partner ID" successMessage="StubHub affiliate ID saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* BOOKING */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">BOOKING_AFFILIATE_ID</span>
+                <p className="text-xs text-gray-500 mt-0.5">Booking.com hotel affiliate (aid param). Register at <a href="https://www.booking.com/affiliate-program/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">booking.com/affiliate-program</a></p>
+              </div>
+              <StatusBadge {...bookingAff} />
+            </div>
+            <SettingForm settingKey="BOOKING_AFFILIATE_ID" placeholder="Your Booking.com aid number" successMessage="Booking.com affiliate ID saved." />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* GETYOURGUIDE */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <span className="font-mono text-sm font-medium text-[#1A1A2E]">GETYOURGUIDE_PARTNER_ID</span>
+                <p className="text-xs text-gray-500 mt-0.5">GetYourGuide activity affiliate. Register at <a href="https://partner.getyourguide.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">partner.getyourguide.com</a></p>
+              </div>
+              <StatusBadge {...gygAff} />
+            </div>
+            <SettingForm settingKey="GETYOURGUIDE_PARTNER_ID" placeholder="e.g. 2VA1MMM" successMessage="GetYourGuide partner ID saved." />
+          </div>
         </div>
       </div>
 

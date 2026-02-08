@@ -9,6 +9,7 @@ import LocalTips from "@/components/LocalTips";
 import LeadCaptureForm from "@/components/LeadCaptureForm";
 import StickyCtaBar from "@/components/StickyCtaBar";
 import { TicketOption as TTicket, HotelOption as THotel, ActivityOption as TActivity } from "@/types";
+import { getAffiliateIds, injectAffiliateUrls } from "@/lib/affiliates";
 
 interface Props {
   params: { slug: string };
@@ -44,9 +45,16 @@ export default async function PackageDetailPage({ params }: Props) {
   const pkg = await prisma.matchPackage.findUnique({ where: { slug: params.slug } });
   if (!pkg) notFound();
 
-  const tickets = pkg.tickets as unknown as TTicket[];
-  const hotels = pkg.hotels as unknown as THotel[];
-  const activities = pkg.activities as unknown as TActivity[];
+  const rawTickets = pkg.tickets as unknown as TTicket[];
+  const rawHotels = pkg.hotels as unknown as THotel[];
+  const rawActivities = pkg.activities as unknown as TActivity[];
+
+  // Inject affiliate URLs automatically
+  const affiliateIds = await getAffiliateIds();
+  const { tickets, hotels, activities } = injectAffiliateUrls(
+    rawTickets, rawHotels, rawActivities, pkg.matchDate, affiliateIds
+  );
+
   const lowestPrice = tickets.length ? Math.min(...tickets.map(t => t.priceFrom)) : 0;
 
   return (
