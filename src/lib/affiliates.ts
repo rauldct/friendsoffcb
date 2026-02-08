@@ -65,7 +65,8 @@ function bookingUrl(
   else if (labelLower.includes("les corts")) ss = "Les Corts Barcelona Spain";
   else if (labelLower.includes("center") || labelLower.includes("centre")) ss = "Barcelona City Center Spain";
 
-  const params = new URLSearchParams({
+  // Build the Booking.com destination URL
+  const bookingParams = new URLSearchParams({
     ss,
     checkin: formatDate(checkin),
     checkout: formatDate(checkout),
@@ -73,9 +74,20 @@ function bookingUrl(
     no_rooms: "1",
   });
 
-  if (affiliateId) params.set("aid", affiliateId);
+  const bookingDestination = `https://www.booking.com/searchresults.html?${bookingParams}${starFilter}`;
 
-  return `https://www.booking.com/searchresults.html?${params}${starFilter}`;
+  // If we have an Awin affiliate ID, wrap in Awin tracking link
+  // Booking.com Awin merchant ID: 5765 (international)
+  if (affiliateId) {
+    const awinParams = new URLSearchParams({
+      awinmid: "5765",
+      awinaffid: affiliateId,
+      ued: bookingDestination,
+    });
+    return `https://www.awin1.com/cread.php?${awinParams}`;
+  }
+
+  return bookingDestination;
 }
 
 function getyourguideUrl(activityLabel: string, partnerId: string): string {

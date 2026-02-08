@@ -250,7 +250,7 @@ export default async function AdminSettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">BOOKING_AFFILIATE_ID</span>
-                <p className="text-xs text-gray-500 mt-0.5">Booking.com hotel affiliate (aid param). Register at <a href="https://www.booking.com/affiliate-program/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">booking.com/affiliate-program</a></p>
+                <p className="text-xs text-gray-500 mt-0.5">Awin affiliate ID for Booking.com. Register at <a href="https://ui.awin.com/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">Awin</a> and join Booking.com merchant</p>
               </div>
               <StatusBadge {...bookingAff} />
             </div>
