@@ -3,12 +3,15 @@ import PostCard from "@/components/PostCard";
 import prisma from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "News & Blog",
-  description: "Latest FC Barcelona news, match analysis, transfer rumours, and fan travel guides. Stay updated with everything Barça.",
+  title: "Blog",
+  description: "FC Barcelona fan blog with match analysis, transfer rumours, travel guides, and insider tips. Written by fans, for fans.",
   openGraph: {
-    title: "FC Barcelona News & Blog | Friends of Barça",
-    description: "Latest FC Barcelona news, match analysis, transfer updates, and travel guides for international fans.",
+    title: "FC Barcelona Blog | Friends of Barça",
+    description: "Match analysis, transfer updates, and travel guides for international FC Barcelona fans.",
     images: ["/images/packages/camp-nou-match2.jpg"],
+  },
+  alternates: {
+    canonical: "https://friendsofbarca.com/blog",
   },
 };
 
@@ -30,8 +33,8 @@ export default async function BlogPage() {
     <div className="section-padding">
       <div className="container-custom">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-heading font-extrabold text-[#1A1A2E] mb-4">News & Blog</h1>
-          <p className="text-gray-500 max-w-2xl mx-auto">Stay up to date with the latest FC Barcelona news, match analysis, and transfer updates.</p>
+          <h1 className="text-4xl md:text-5xl font-heading font-extrabold text-[#1A1A2E] mb-4">Blog</h1>
+          <p className="text-gray-500 max-w-2xl mx-auto">Match analysis, travel guides, and insider tips for FC Barcelona fans around the world.</p>
         </div>
         {serialized.length === 0 ? (
           <div className="text-center py-20">

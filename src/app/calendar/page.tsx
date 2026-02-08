@@ -3,12 +3,20 @@ import prisma from "@/lib/prisma";
 import MatchCalendarClient from "./MatchCalendarClient";
 
 export const metadata: Metadata = {
-  title: "Match Calendar 2026",
-  description: "FC Barcelona match calendar 2026. See all upcoming La Liga, Champions League, and Copa del Rey matches with dates and matchday packages.",
+  title: "Match Calendar 2025-26",
+  description: "FC Barcelona match calendar 2025-26. See all upcoming La Liga, Champions League, and Copa del Rey matches with dates and matchday packages.",
   openGraph: {
-    title: "FC Barcelona Match Calendar 2026",
+    title: "FC Barcelona Match Calendar 2025-26",
     description: "All upcoming FC Barcelona matches. La Liga, Champions League & Copa del Rey schedule.",
     images: ["/images/packages/camp-nou-night.jpg"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FC Barcelona Match Calendar 2025-26",
+    description: "Complete schedule of Barcelona matches this season.",
+  },
+  alternates: {
+    canonical: "https://friendsofbarca.com/calendar",
   },
 };
 

@@ -14,8 +14,10 @@ const adminLinks = [
   { href: "/admin/penyes", label: "Peñas", icon: "🏠" },
   { href: "/admin/penyes/chat", label: "Chat RAG", icon: "💬" },
   { href: "/admin/news", label: "News", icon: "📰" },
+  { href: "/admin/feedback", label: "Feedback", icon: "💬" },
   { href: "/admin/newsletter", label: "Newsletter", icon: "📨" },
   { href: "/admin/users", label: "Users", icon: "👤" },
+  { href: "/admin/backup", label: "Backup", icon: "💾" },
   { href: "/admin/settings", label: "Settings", icon: "⚙️" },
 ];
 

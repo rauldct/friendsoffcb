@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import PhotoMetadataModal from '@/components/PhotoMetadataModal';
 
 interface Photo {
   id: string;
@@ -14,6 +15,8 @@ interface Photo {
   height: number;
   takenAt: string | null;
   location: string | null;
+  latitude: number | null;
+  longitude: number | null;
   uploaderName: string;
   uploaderEmail: string;
   status: string;
@@ -27,9 +30,10 @@ export default function AdminGalleryPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [filter, setFilter] = useState<string>('pending');
+  const [filter, setFilter] = useState<string>('approved');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [metadataPhoto, setMetadataPhoto] = useState<Photo | null>(null);
 
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
@@ -86,7 +90,7 @@ export default function AdminGalleryPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Gallery Management</h1>
         <div className="flex gap-2">
-          {['pending', 'approved', 'rejected', ''].map((f) => (
+          {['approved', 'pending', 'rejected', ''].map((f) => (
             <button
               key={f}
               onClick={() => { setFilter(f); setPage(1); }}
@@ -124,11 +128,22 @@ export default function AdminGalleryPage() {
               <div className="p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-900 truncate">{photo.uploaderName}</p>
-                  <p className="text-xs text-gray-500">{new Date(photo.createdAt).toLocaleDateString()}</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setMetadataPhoto(photo)}
+                      className="text-gray-400 hover:text-[#004D98] transition-colors"
+                      title="View details"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                    <p className="text-xs text-gray-500">{new Date(photo.createdAt).toLocaleDateString()}</p>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500 truncate">{photo.uploaderEmail}</p>
                 {photo.location && (
-                  <p className="text-xs text-gray-500 truncate">📍 {photo.location}</p>
+                  <p className="text-xs text-gray-500 truncate">&#128205; {photo.location}</p>
                 )}
                 <p className="text-xs text-gray-400">{photo.originalName} ({(photo.fileSize / 1024).toFixed(0)} KB)</p>
 
@@ -186,6 +201,14 @@ export default function AdminGalleryPage() {
             Next
           </button>
         </div>
+      )}
+
+      {/* Metadata Modal */}
+      {metadataPhoto && (
+        <PhotoMetadataModal
+          photo={metadataPhoto}
+          onClose={() => setMetadataPhoto(null)}
+        />
       )}
     </div>
   );

@@ -13,6 +13,14 @@ export const metadata: Metadata = {
     description: 'Community photo gallery from Barça fans worldwide. Share your Camp Nou moments!',
     images: ['/images/packages/camp-nou-match.jpg'],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'FC Barcelona Fan Gallery',
+    description: 'Photos from Barça fans worldwide. Share your Camp Nou moments!',
+  },
+  alternates: {
+    canonical: 'https://friendsofbarca.com/gallery',
+  },
 };
 
 export default async function GalleryPage() {

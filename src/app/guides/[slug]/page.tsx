@@ -10,7 +10,25 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await prisma.blogPost.findUnique({ where: { slug: params.slug } });
   if (!post) return { title: "Guide Not Found" };
-  return { title: post.metaTitle, description: post.metaDescription };
+  return {
+    title: post.metaTitle || post.title,
+    description: post.metaDescription || post.excerpt,
+    openGraph: {
+      title: post.metaTitle || post.title,
+      description: post.metaDescription || post.excerpt,
+      type: "article",
+      publishedTime: post.publishedAt.toISOString(),
+      ...(post.coverImage ? { images: [{ url: post.coverImage }] } : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.metaTitle || post.title,
+      description: post.metaDescription || post.excerpt,
+    },
+    alternates: {
+      canonical: `https://friendsofbarca.com/guides/${params.slug}`,
+    },
+  };
 }
 
 export const revalidate = 300;

@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
-const BARCA_ID = 529; // FC Barcelona ID in API-Football (api-sports.io)
-const API_BASE = "https://v3.football.api-sports.io";
+const BARCA_FD_ID = 81;
+const FD_BASE = "https://api.football-data.org/v4";
 
-async function getApiKey(): Promise<string> {
+async function getFootballDataApiKey(): Promise<string> {
   try {
-    const s = await prisma.setting.findUnique({ where: { key: "API_FOOTBALL_KEY" } });
+    const s = await prisma.setting.findUnique({ where: { key: "FOOTBALL_DATA_API_KEY" } });
     if (s?.value) return s.value;
   } catch { /* fallback */ }
-  return process.env.API_FOOTBALL_KEY || "";
+  return process.env.FOOTBALL_DATA_API_KEY || "";
 }
 
 export async function POST() {
@@ -19,48 +19,34 @@ export async function POST() {
   });
 
   try {
-    const apiKey = await getApiKey();
-    if (!apiKey) throw new Error("API_FOOTBALL_KEY not configured");
+    const apiKey = await getFootballDataApiKey();
+    if (!apiKey) throw new Error("FOOTBALL_DATA_API_KEY not configured");
 
-    // Calculate current season and fetch scheduled/not-started fixtures
     const now = new Date();
-    const season = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
     const fromDate = now.toISOString().slice(0, 10);
     const toDate = new Date(now.getTime() + 120 * 86400000).toISOString().slice(0, 10);
 
-    let res = await fetch(
-      `${API_BASE}/fixtures?team=${BARCA_ID}&from=${fromDate}&to=${toDate}&season=${season}`,
-      { headers: { "x-apisports-key": apiKey }, cache: "no-store" }
+    const res = await fetch(
+      `${FD_BASE}/teams/${BARCA_FD_ID}/matches?status=SCHEDULED,TIMED&dateFrom=${fromDate}&dateTo=${toDate}`,
+      {
+        headers: { "X-Auth-Token": apiKey },
+        cache: "no-store",
+      }
     );
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
 
-    let data = await res.json();
-    let matches = data.response || [];
+    if (!res.ok) throw new Error(`football-data.org API error: ${res.status}`);
 
-    // Fallback to previous season if no results (free tier limitation)
-    if (matches.length === 0 && season > 2022) {
-      res = await fetch(
-        `${API_BASE}/fixtures?team=${BARCA_ID}&from=${fromDate}&to=${toDate}&season=${season - 1}`,
-        { headers: { "x-apisports-key": apiKey }, cache: "no-store" }
-      );
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      data = await res.json();
-      matches = data.response || [];
-    }
-
-    // Filter only not-started matches
-    matches = matches.filter((m: { fixture: { status: { short: string } } }) =>
-      ["NS", "TBD", "PST"].includes(m.fixture.status.short)
-    );
+    const data = await res.json();
+    const matches = data.matches || [];
 
     let created = 0;
     let skipped = 0;
 
     for (const m of matches) {
-      const matchDate = new Date(m.fixture.date);
-      const isHome = m.teams.home.id === BARCA_ID;
-      const opponent = isHome ? m.teams.away.name : m.teams.home.name;
-      const opponentLogo = isHome ? m.teams.away.logo : m.teams.home.logo;
+      const matchDate = new Date(m.utcDate);
+      const isHome = m.homeTeam.id === BARCA_FD_ID;
+      const opponent = isHome ? m.awayTeam.name : m.homeTeam.name;
+      const opponentLogo = isHome ? (m.awayTeam.crest || "") : (m.homeTeam.crest || "");
 
       const existing = await prisma.match.findFirst({
         where: {
@@ -87,8 +73,8 @@ export async function POST() {
             timeZone: "Europe/Madrid",
           }),
           opponent,
-          opponentLogo: opponentLogo || "",
-          competition: m.league.name || "La Liga",
+          opponentLogo,
+          competition: m.competition?.name || "La Liga",
           venue: isHome ? "home" : "away",
         },
       });

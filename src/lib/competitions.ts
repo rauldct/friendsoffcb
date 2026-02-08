@@ -356,6 +356,130 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
   }
 }
 
+// ============== COPA DEL REY VIA BRAVE SEARCH + CLAUDE ==============
+
+async function fetchCopaDelReyViaSearch(): Promise<{
+  recentResults: MatchEntry[];
+  upcomingMatches: MatchEntry[];
+  season: string;
+}> {
+  const braveKey = await getSettingKey("BRAVE_API_KEY");
+  const anthropicKey = await getAnthropicKey();
+  const season = getCurrentSeason();
+  const seasonStr = `${season}-${season + 1}`;
+
+  if (!braveKey || !anthropicKey) {
+    console.error("[Competitions] Copa del Rey: Missing BRAVE_API_KEY or ANTHROPIC_API_KEY");
+    return { recentResults: [], upcomingMatches: [], season: seasonStr };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      q: `FC Barcelona Copa del Rey ${seasonStr} results schedule`,
+      count: "10",
+      search_lang: "en",
+    });
+
+    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": braveKey,
+      },
+    });
+
+    if (!res.ok) {
+      console.error(`[Competitions] Brave Search error: ${res.status}`);
+      return { recentResults: [], upcomingMatches: [], season: seasonStr };
+    }
+
+    const data = await res.json();
+    const results = data.web?.results || [];
+    const snippets = results
+      .map((r: { title: string; description: string; url: string }) =>
+        `[${r.title}] ${r.description}`
+      )
+      .join("\n\n");
+
+    if (!snippets) {
+      return { recentResults: [], upcomingMatches: [], season: seasonStr };
+    }
+
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 1500,
+      messages: [
+        {
+          role: "user",
+          content: `Based on these search results about FC Barcelona in the Copa del Rey ${seasonStr}, extract match information.
+
+SEARCH RESULTS:
+${snippets}
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "recentResults": [
+    {
+      "date": "YYYY-MM-DDTHH:mm:ssZ",
+      "homeTeam": "Team Name",
+      "awayTeam": "Team Name",
+      "homeGoals": 0,
+      "awayGoals": 0,
+      "round": "Round of 32"
+    }
+  ],
+  "upcomingMatches": [
+    {
+      "date": "YYYY-MM-DDTHH:mm:ssZ",
+      "homeTeam": "Team Name",
+      "awayTeam": "Team Name",
+      "round": "Quarter-finals"
+    }
+  ]
+}
+
+Only include matches involving FC Barcelona. Use real data from the search results. If no data is found for a category, return an empty array.`,
+        },
+      ],
+    });
+
+    let text = response.content[0].type === "text" ? response.content[0].text : "";
+    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const parsed = JSON.parse(text);
+
+    const recentResults: MatchEntry[] = (parsed.recentResults || []).map(
+      (m: { date: string; homeTeam: string; awayTeam: string; homeGoals: number; awayGoals: number; round?: string }, i: number) => ({
+        fixture: { id: 90000 + i, date: m.date, status: { short: "FT" } },
+        teams: {
+          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: "" },
+          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: "" },
+        },
+        league: { id: 143, name: "Copa del Rey", logo: "" },
+        goals: { home: m.homeGoals ?? null, away: m.awayGoals ?? null },
+      })
+    );
+
+    const upcomingMatches: MatchEntry[] = (parsed.upcomingMatches || []).map(
+      (m: { date: string; homeTeam: string; awayTeam: string; round?: string }, i: number) => ({
+        fixture: { id: 91000 + i, date: m.date, status: { short: "NS" } },
+        teams: {
+          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: "" },
+          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: "" },
+        },
+        league: { id: 143, name: "Copa del Rey", logo: "" },
+        goals: { home: null, away: null },
+      })
+    );
+
+    console.log(`[Competitions] Copa del Rey via Brave Search: ${recentResults.length} results, ${upcomingMatches.length} upcoming`);
+    return { recentResults, upcomingMatches, season: seasonStr };
+  } catch (err) {
+    console.error("[Competitions] Copa del Rey search error:", err);
+    return { recentResults: [], upcomingMatches: [], season: seasonStr };
+  }
+}
+
 // ============== REFRESH COMPETITION ==============
 
 export async function refreshCompetition(comp: Competition): Promise<void> {
@@ -407,31 +531,13 @@ export async function refreshCompetition(comp: Competition): Promise<void> {
       seasonStr = `${season}-${season + 1}`;
     }
   } else {
-    // ========= FALLBACK: API-Football (Copa del Rey) =========
-    console.log(`[Competitions] ${comp.name}: Using API-Football (leagueId: ${comp.leagueId})`);
+    // ========= COPA DEL REY: Brave Search + Claude AI =========
+    console.log(`[Competitions] ${comp.name}: Using Brave Search + Claude AI`);
 
-    let usedSeason = getCurrentSeason();
-
-    if (comp.hasStandings) {
-      const result = await fetchStandingsApiFootball(comp.leagueId);
-      standings = result.standings;
-      usedSeason = result.season;
-      barcaEntry = standings.find((s) => s.team.id === BARCA_ID_API_FOOTBALL);
-    } else {
-      // Copa del Rey: no standings, free tier caps at 2024
-      if (usedSeason > 2024) usedSeason = 2024;
-    }
-
-    let upcoming = await fetchBarcaUpcomingApiFootball(usedSeason);
-    if (upcoming.length === 0 && usedSeason > 2022) {
-      upcoming = await fetchBarcaUpcomingApiFootball(usedSeason - 1);
-    }
-    upcomingMatches = upcoming.filter((m) => m.league.id === comp.leagueId);
-
-    const recent = await fetchBarcaRecentResultsApiFootball(usedSeason);
-    recentResults = recent.filter((m) => m.league.id === comp.leagueId);
-
-    seasonStr = `${usedSeason}-${usedSeason + 1}`;
+    const copaData = await fetchCopaDelReyViaSearch();
+    recentResults = copaData.recentResults;
+    upcomingMatches = copaData.upcomingMatches;
+    seasonStr = copaData.season;
   }
 
   const barcaStats = barcaEntry

@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import FeedbackModal from "./FeedbackModal";
 
 export default function Footer() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +26,7 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
           <div>
-            <h3 className="font-heading font-bold text-lg mb-4">⚽ Friends of <span className="text-[#EDBB00]">Barça</span></h3>
+            <h3 className="font-heading font-bold text-lg mb-4">&#9917; Friends of <span className="text-[#EDBB00]">Barça</span></h3>
             <p className="text-gray-400 text-sm mb-4">Your ultimate guide to experiencing FC Barcelona matches at the Spotify Camp Nou. Tickets, hotels, tours & insider tips.</p>
             <div className="flex gap-4">
               <a href="#" aria-label="Twitter" className="text-gray-400 hover:text-white"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
@@ -65,7 +67,13 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
             <p>&copy; 2026 Friends of Barça. All rights reserved.</p>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
+              <button
+                onClick={() => setShowFeedback(true)}
+                className="text-[#EDBB00] hover:text-yellow-300 font-medium transition-colors"
+              >
+                Send Feedback
+              </button>
               <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
               <Link href="/terms" className="hover:text-white">Terms of Use</Link>
               <Link href="/cookies" className="hover:text-white">Cookie Policy</Link>
@@ -77,6 +85,7 @@ export default function Footer() {
           </div>
         </div>
       </div>
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </footer>
   );
 }

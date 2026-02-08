@@ -10,6 +10,14 @@ export const metadata: Metadata = {
     description: "Complete matchday packages for every FC Barcelona home game. Tickets, hotels & tours curated by locals.",
     images: ["/images/packages/camp-nou-match.jpg"],
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "FC Barcelona Match Packages",
+    description: "Complete matchday packages: tickets, hotels & tours for Camp Nou.",
+  },
+  alternates: {
+    canonical: "https://friendsofbarca.com/packages",
+  },
 };
 
 export const revalidate = 300;

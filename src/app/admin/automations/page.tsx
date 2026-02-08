@@ -79,6 +79,8 @@ export default function AdminAutomationsPage() {
       match_chronicle: 'Match Chronicle',
       auto_chronicle: 'Auto Chronicle',
       match_sync: 'Match Sync',
+      package_sync: 'Package Sync',
+      guide_generation: 'Guide Generation',
     };
     return labels[type] || type;
   };
@@ -116,6 +118,8 @@ export default function AdminAutomationsPage() {
             { endpoint: '/api/automations/news-digest', label: 'Generate Digest', icon: '{"📰"}', desc: 'Create news digest from RSS feeds' },
             { endpoint: '/api/automations/match-chronicle', label: 'Check Match (legacy)', icon: '{"⚽"}', desc: 'Generate chronicle if Barça played today (API-Football)' },
             { endpoint: '/api/automations/sync-matches', label: 'Sync Calendar', icon: '{"🔄"}', desc: 'Sync matches from football API' },
+            { endpoint: '/api/automations/sync-packages', label: 'Sync Packages', icon: '{"🎟️"}', desc: 'Sync StubHub events + GYG activities' },
+            { endpoint: '/api/automations/generate-guide', label: 'Generate Guide', icon: '{"📚"}', desc: 'Create a new travel guide with AI' },
             { endpoint: '/api/automations/seed', label: 'Seed 10 Weeks', icon: '{"🌱"}', desc: 'Generate retroactive content (slow)' },
           ].map((action) => (
             <button
@@ -204,6 +208,20 @@ export default function AdminAutomationsPage() {
             <div>
               <div className="font-medium text-[#1A1A2E]">Competition Data</div>
               <div className="text-xs text-gray-500">Daily at 6:00 AM UTC</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center text-yellow-600">{"🎟️"}</span>
+            <div>
+              <div className="font-medium text-[#1A1A2E]">Package Sync (StubHub + GYG)</div>
+              <div className="text-xs text-gray-500">Daily at 7:30 AM UTC</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">{"📚"}</span>
+            <div>
+              <div className="font-medium text-[#1A1A2E]">Guide Generation</div>
+              <div className="text-xs text-gray-500">Monthly on the 1st at 9:00 AM UTC</div>
             </div>
           </div>
         </div>

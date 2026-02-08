@@ -37,7 +37,17 @@ export default async function NewsArticlePage({ params }: Props) {
   const article = await prisma.newsArticle.findUnique({ where: { slug: params.slug } });
   if (!article || article.status !== "published") notFound();
 
-  const sources = (article.sources as Array<{ name: string; url: string }>) || [];
+  let sources: Array<{ name: string; url: string }> = [];
+  try {
+    const raw = article.sources;
+    if (typeof raw === "string") {
+      sources = JSON.parse(raw);
+    } else if (Array.isArray(raw)) {
+      sources = raw as Array<{ name: string; url: string }>;
+    }
+  } catch {
+    sources = [];
+  }
 
   return (
     <article className="section-padding">

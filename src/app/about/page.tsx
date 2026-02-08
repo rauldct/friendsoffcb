@@ -9,6 +9,14 @@ export const metadata: Metadata = {
     description: "Local Barcelona fans helping international visitors experience FC Barcelona like locals.",
     images: ["/images/packages/camp-nou-exterior.jpg"],
   },
+  twitter: {
+    card: "summary",
+    title: "About Friends of Barça",
+    description: "Local Barcelona fans helping international visitors experience FC Barcelona like locals.",
+  },
+  alternates: {
+    canonical: "https://friendsofbarca.com/about",
+  },
 };
 
 export default function AboutPage() {

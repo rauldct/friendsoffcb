@@ -28,8 +28,16 @@ export async function getAffiliateIds(): Promise<AffiliateIds> {
 
 // ============== URL GENERATORS ==============
 
-function stubhubUrl(matchTitle: string, affiliateId: string): string {
-  // StubHub FC Barcelona category page (current URL format)
+function stubhubUrl(matchTitle: string, affiliateId: string, eventUrl?: string | null): string {
+  // Use specific event URL if available from sync
+  if (eventUrl) {
+    if (affiliateId && !eventUrl.includes("gcid=")) {
+      const sep = eventUrl.includes("?") ? "&" : "?";
+      return `${eventUrl}${sep}gcid=${encodeURIComponent(affiliateId)}`;
+    }
+    return eventUrl;
+  }
+  // Fallback to generic FC Barcelona category page
   const base = "https://www.stubhub.com/fc-barcelona-tickets/category/120817";
   if (!affiliateId) return base;
   return `${base}?gcid=${encodeURIComponent(affiliateId)}`;
@@ -107,7 +115,8 @@ export function injectAffiliateUrls(
   hotels: HotelOption[],
   activities: ActivityOption[],
   matchDate: Date,
-  affiliateIds: AffiliateIds
+  affiliateIds: AffiliateIds,
+  stubhubEventUrl?: string | null
 ): {
   tickets: TicketOption[];
   hotels: HotelOption[];
@@ -117,7 +126,7 @@ export function injectAffiliateUrls(
     ...t,
     affiliateUrl: t.affiliateUrl && t.affiliateUrl !== "#"
       ? t.affiliateUrl // Keep manually set URLs
-      : stubhubUrl(t.label, affiliateIds.stubhub),
+      : stubhubUrl(t.label, affiliateIds.stubhub, stubhubEventUrl),
   }));
 
   const enrichedHotels = hotels.map(h => ({

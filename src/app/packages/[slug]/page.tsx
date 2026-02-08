@@ -51,8 +51,9 @@ export default async function PackageDetailPage({ params }: Props) {
 
   // Inject affiliate URLs automatically
   const affiliateIds = await getAffiliateIds();
+  const stubhubEventUrl = (pkg as Record<string, unknown>).stubhubEventUrl as string | null | undefined;
   const { tickets, hotels, activities } = injectAffiliateUrls(
-    rawTickets, rawHotels, rawActivities, pkg.matchDate, affiliateIds
+    rawTickets, rawHotels, rawActivities, pkg.matchDate, affiliateIds, stubhubEventUrl
   );
 
   const lowestPrice = tickets.length ? Math.min(...tickets.map(t => t.priceFrom)) : 0;

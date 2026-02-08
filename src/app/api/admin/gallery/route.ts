@@ -51,11 +51,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Photo not found." }, { status: 404 });
     }
 
-    // If rejecting, delete files
-    if (status === "rejected") {
-      await deletePhotoFiles(photo.filename, photo.thumbnailName);
-    }
-
     const updated = await prisma.photo.update({
       where: { id },
       data: {

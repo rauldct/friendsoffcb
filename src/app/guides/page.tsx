@@ -10,6 +10,14 @@ export const metadata: Metadata = {
     description: "Everything you need to know before visiting Camp Nou. Written by locals, for fans.",
     images: ["/images/blog/barcelona-rambla.jpg"],
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Barcelona Travel Guides for Barça Fans",
+    description: "Camp Nou guides, best bars, transport tips & more. Written by locals.",
+  },
+  alternates: {
+    canonical: "https://friendsofbarca.com/guides",
+  },
 };
 
 export const revalidate = 300;
