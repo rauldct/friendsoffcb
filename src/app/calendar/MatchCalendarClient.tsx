@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -116,7 +117,18 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
                             {/* Match info */}
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-lg">{competitionIcons[match.competition] || "⚽"}</span>
+                                {match.opponentLogo ? (
+                                  <Image
+                                    src={match.opponentLogo}
+                                    alt={match.opponent}
+                                    width={28}
+                                    height={28}
+                                    className="w-7 h-7 object-contain"
+                                    unoptimized={match.opponentLogo.startsWith("http")}
+                                  />
+                                ) : (
+                                  <span className="text-lg">{competitionIcons[match.competition] || "⚽"}</span>
+                                )}
                                 <span className="font-heading font-bold text-[#1A1A2E]">
                                   {isHome ? `FC Barcelona vs ${match.opponent}` : `${match.opponent} vs FC Barcelona`}
                                 </span>

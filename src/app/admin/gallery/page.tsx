@@ -22,6 +22,7 @@ interface Photo {
   status: string;
   rejectionReason: string | null;
   moderatedAt: string | null;
+  reportCount: number;
   createdAt: string;
 }
 
@@ -85,12 +86,14 @@ export default function AdminGalleryPage() {
     return 'bg-yellow-100 text-yellow-700';
   };
 
+  const filters = ['approved', 'pending', 'rejected', 'reported', ''];
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Gallery Management</h1>
-        <div className="flex gap-2">
-          {['approved', 'pending', 'rejected', ''].map((f) => (
+        <div className="flex gap-2 flex-wrap">
+          {filters.map((f) => (
             <button
               key={f}
               onClick={() => { setFilter(f); setPage(1); }}
@@ -98,7 +101,7 @@ export default function AdminGalleryPage() {
                 filter === f ? 'bg-[#004D98] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              {f === '' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === '' ? 'All' : f === 'reported' ? 'Reported' : f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
         </div>
@@ -124,6 +127,14 @@ export default function AdminGalleryPage() {
                 <span className={`absolute top-2 right-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor(photo.status)}`}>
                   {photo.status}
                 </span>
+                {photo.reportCount > 0 && (
+                  <span className="absolute top-2 left-2 rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                      <path d="M3.5 2.75a.75.75 0 00-1.5 0v14.5a.75.75 0 001.5 0v-4.392l1.657-.348a6.449 6.449 0 014.271.572 7.948 7.948 0 005.965.524l2.078-.64A.75.75 0 0018 12.25v-8.5a.75.75 0 00-.904-.734l-2.38.501a7.25 7.25 0 01-4.186-.363l-.502-.2a8.75 8.75 0 00-5.053-.439l-1.475.31V2.75z" />
+                    </svg>
+                    {photo.reportCount}
+                  </span>
+                )}
               </div>
               <div className="p-3 space-y-2">
                 <div className="flex items-center justify-between">

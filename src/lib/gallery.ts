@@ -6,7 +6,7 @@ import fs from "fs/promises";
 import prisma from "@/lib/prisma";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "gallery");
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_WIDTH = 1920;
 const THUMB_SIZE = 400;
@@ -33,6 +33,7 @@ export interface ProcessedImage {
 export interface ModerationResult {
   approved: boolean;
   reason: string;
+  confidence: "high" | "medium" | "low";
 }
 
 export function validateUpload(
@@ -42,7 +43,7 @@ export function validateUpload(
   if (!ALLOWED_TYPES.includes(mimeType)) {
     return {
       valid: false,
-      error: "Only JPG, PNG, and WebP images are allowed.",
+      error: "Only JPG, PNG, WebP, and HEIC images are allowed.",
     };
   }
   if (size > MAX_SIZE) {
@@ -98,28 +99,40 @@ export async function processImage(
   mimeType: string
 ): Promise<ProcessedImage> {
   const id = crypto.randomUUID();
-  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const isHeic = mimeType === "image/heic" || mimeType === "image/heif";
+  // HEIC gets converted to JPEG; others keep their format
+  const ext = isHeic ? "jpg" : mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   const filename = `${id}.${ext}`;
   const thumbnailName = `${id}_thumb.${ext}`;
 
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
-  const image = sharp(buffer);
-  const metadata = await image.metadata();
+  // .rotate() without args reads EXIF orientation and applies it automatically
+  let pipeline = sharp(buffer).rotate();
+  if (isHeic) {
+    pipeline = pipeline.jpeg({ quality: 85 });
+  }
+
+  const metadata = await sharp(buffer).metadata();
   const origWidth = metadata.width || MAX_WIDTH;
   const origHeight = metadata.height || MAX_WIDTH;
 
   // Resize main image if larger than MAX_WIDTH
-  const mainImage =
-    origWidth > MAX_WIDTH ? image.resize({ width: MAX_WIDTH, withoutEnlargement: true }) : image;
+  if (origWidth > MAX_WIDTH) {
+    pipeline = pipeline.resize({ width: MAX_WIDTH, withoutEnlargement: true });
+  }
 
-  const mainBuffer = await mainImage.toBuffer();
+  const mainBuffer = await pipeline.toBuffer();
   await fs.writeFile(path.join(UPLOAD_DIR, filename), mainBuffer);
 
-  // Thumbnail
-  const thumbBuffer = await sharp(buffer)
-    .resize({ width: THUMB_SIZE, height: THUMB_SIZE, fit: "cover" })
-    .toBuffer();
+  // Thumbnail - also with .rotate() for correct orientation
+  let thumbPipeline = sharp(buffer)
+    .rotate()
+    .resize({ width: THUMB_SIZE, height: THUMB_SIZE, fit: "cover" });
+  if (isHeic) {
+    thumbPipeline = thumbPipeline.jpeg({ quality: 80 });
+  }
+  const thumbBuffer = await thumbPipeline.toBuffer();
   await fs.writeFile(path.join(UPLOAD_DIR, thumbnailName), thumbBuffer);
 
   const finalMeta = await sharp(mainBuffer).metadata();
@@ -144,13 +157,21 @@ export async function moderateWithClaude(
     if (dbSetting?.value) apiKey = dbSetting.value;
   } catch {}
   if (!apiKey) {
-    return { approved: false, reason: "pending_manual_review" };
+    return { approved: false, reason: "pending_manual_review", confidence: "low" };
   }
 
   try {
     const client = new Anthropic({ apiKey });
-    const base64 = buffer.toString("base64");
-    const mediaType = mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+
+    // Convert HEIC/HEIF to JPEG before sending to Claude (API doesn't accept HEIC)
+    let imageBuffer = buffer;
+    let mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif" = mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+    if (mimeType === "image/heic" || mimeType === "image/heif") {
+      imageBuffer = await sharp(buffer).rotate().jpeg({ quality: 85 }).toBuffer();
+      mediaType = "image/jpeg";
+    }
+
+    const base64 = imageBuffer.toString("base64");
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-5-20250929",
@@ -182,8 +203,13 @@ REJECT if the image:
 - Is spam, advertising, or promotional material
 - Contains offensive or inappropriate content
 
+Also indicate your confidence level:
+- "high": you are very certain about your decision
+- "medium": you have some doubts but lean towards your decision
+- "low": you cannot determine with certainty
+
 Respond in this exact JSON format only:
-{"approved": true/false, "reason": "brief explanation"}`,
+{"approved": true/false, "reason": "brief explanation", "confidence": "high/medium/low"}`,
             },
           ],
         },
@@ -195,15 +221,17 @@ Respond in this exact JSON format only:
     const match = text.match(/\{[\s\S]*\}/);
     if (match) {
       const result = JSON.parse(match[0]);
+      const confidence = ["high", "medium", "low"].includes(result.confidence) ? result.confidence : "medium";
       return {
         approved: !!result.approved,
         reason: result.reason || "Moderation complete",
+        confidence,
       };
     }
-    return { approved: false, reason: "pending_manual_review" };
+    return { approved: false, reason: "pending_manual_review", confidence: "low" };
   } catch {
     // API error → mark for manual review
-    return { approved: false, reason: "pending_manual_review" };
+    return { approved: false, reason: "pending_manual_review", confidence: "low" };
   }
 }
 

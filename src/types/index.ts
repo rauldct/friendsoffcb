@@ -113,5 +113,6 @@ export interface Photo {
   status: string;
   rejectionReason: string | null;
   moderatedAt: string | null;
+  reportCount: number;
   createdAt: string;
 }

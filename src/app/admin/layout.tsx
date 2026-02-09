@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const adminLinks = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
@@ -25,6 +25,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [pendingGalleryCount, setPendingGalleryCount] = useState(0);
+
+  // Fetch pending gallery count
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const res = await fetch("/api/admin/gallery/pending-count");
+        if (res.ok) {
+          const data = await res.json();
+          setPendingGalleryCount(data.count || 0);
+        }
+      } catch {}
+    };
+    if (pathname !== "/admin/login") {
+      fetchPendingCount();
+    }
+  }, [pathname]);
 
   // Login page renders without sidebar/topbar
   if (pathname === "/admin/login") {
@@ -69,7 +86,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <nav className="bg-white rounded-xl shadow-sm overflow-hidden">
               {adminLinks.map(link => {
                 // Check if this specific link should be active
-                // For exact matches or child routes, but not when a more specific sibling link matches
                 const isActive = pathname === link.href ||
                   (link.href !== "/admin" && pathname.startsWith(link.href + "/") &&
                     !adminLinks.some(other => other.href !== link.href && other.href.startsWith(link.href + "/") && pathname.startsWith(other.href)));
@@ -85,6 +101,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 >
                   <span>{link.icon}</span>
                   <span>{link.label}</span>
+                  {link.href === "/admin/gallery" && pendingGalleryCount > 0 && (
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-orange-500 px-2 py-0.5 text-xs font-bold text-white">
+                      {pendingGalleryCount}
+                    </span>
+                  )}
                 </Link>
               );
               })}

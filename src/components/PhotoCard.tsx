@@ -6,9 +6,10 @@ import { Photo } from '@/types';
 interface PhotoCardProps {
   photo: Photo;
   onClick: () => void;
+  onReport: () => void;
 }
 
-export default function PhotoCard({ photo, onClick }: PhotoCardProps) {
+export default function PhotoCard({ photo, onClick, onReport }: PhotoCardProps) {
   return (
     <div
       className="group relative cursor-pointer overflow-hidden rounded-xl break-inside-avoid mb-4 bg-gray-100"
@@ -23,6 +24,19 @@ export default function PhotoCard({ photo, onClick }: PhotoCardProps) {
         loading="lazy"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+      {/* Report flag button - top right on hover */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onReport(); }}
+        className="absolute top-2 right-2 rounded-full bg-black/40 p-1.5 text-white/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100 hover:bg-red-500/80 hover:text-white"
+        aria-label="Report photo"
+        title="Report photo"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+          <path d="M3.5 2.75a.75.75 0 00-1.5 0v14.5a.75.75 0 001.5 0v-4.392l1.657-.348a6.449 6.449 0 014.271.572 7.948 7.948 0 005.965.524l2.078-.64A.75.75 0 0018 12.25v-8.5a.75.75 0 00-.904-.734l-2.38.501a7.25 7.25 0 01-4.186-.363l-.502-.2a8.75 8.75 0 00-5.053-.439l-1.475.31V2.75z" />
+        </svg>
+      </button>
+
       <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full transition-transform duration-300 group-hover:translate-y-0">
         {photo.location && (
           <p className="text-xs text-white/90 flex items-center gap-1">

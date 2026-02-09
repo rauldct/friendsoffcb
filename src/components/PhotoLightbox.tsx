@@ -12,9 +12,10 @@ interface PhotoLightboxProps {
   onNext: () => void;
   hasPrev: boolean;
   hasNext: boolean;
+  onReport: () => void;
 }
 
-export default function PhotoLightbox({ photo, onClose, onPrev, onNext, hasPrev, hasNext }: PhotoLightboxProps) {
+export default function PhotoLightbox({ photo, onClose, onPrev, onNext, hasPrev, hasNext, onReport }: PhotoLightboxProps) {
   const { t } = useLanguage();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -85,8 +86,18 @@ export default function PhotoLightbox({ photo, onClose, onPrev, onNext, hasPrev,
             <span>{t('gallery.taken')}: {new Date(photo.takenAt).toLocaleDateString()}</span>
           )}
 
-          {/* Social Share buttons */}
+          {/* Report + Social Share buttons */}
           <div className="flex items-center gap-2 ml-2">
+            <button
+              onClick={onReport}
+              className="rounded-full bg-white/10 p-2 text-white/70 transition-colors hover:bg-red-500/60 hover:text-white"
+              aria-label="Report photo"
+              title="Report photo"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                <path d="M3.5 2.75a.75.75 0 00-1.5 0v14.5a.75.75 0 001.5 0v-4.392l1.657-.348a6.449 6.449 0 014.271.572 7.948 7.948 0 005.965.524l2.078-.64A.75.75 0 0018 12.25v-8.5a.75.75 0 00-.904-.734l-2.38.501a7.25 7.25 0 01-4.186-.363l-.502-.2a8.75 8.75 0 00-5.053-.439l-1.475.31V2.75z" />
+              </svg>
+            </button>
             <button
               onClick={() => {
                 const url = `${window.location.origin}/gallery`;

@@ -18,8 +18,15 @@ export default function PhotoUploadForm() {
   const { t } = useLanguage();
 
   const handleFile = useCallback((f: File) => {
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(f.type)) {
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    // iPhones may send empty type for HEIC — infer from extension
+    let fileType = f.type?.toLowerCase() || '';
+    if (!fileType || fileType === 'application/octet-stream') {
+      const ext = f.name?.split('.').pop()?.toLowerCase();
+      const extMap: Record<string, string> = { heic: 'image/heic', heif: 'image/heif', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+      fileType = extMap[ext || ''] || fileType;
+    }
+    if (!validTypes.includes(fileType)) {
       setMessage(t('gallery.invalidType'));
       setStatus('error');
       return;
@@ -143,7 +150,7 @@ export default function PhotoUploadForm() {
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
           onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
           className="hidden"
         />

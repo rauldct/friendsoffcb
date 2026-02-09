@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { Photo } from '@/types';
 import PhotoCard from './PhotoCard';
 import PhotoLightbox from './PhotoLightbox';
+import ReportPhotoModal from './ReportPhotoModal';
 import { useLanguage } from '@/lib/LanguageContext';
 
 interface GalleryGridProps {
@@ -19,6 +20,7 @@ export default function GalleryGrid({ initialPhotos, initialTotal, initialPage, 
   const [loading, setLoading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(initialPage < totalPages);
+  const [reportPhotoId, setReportPhotoId] = useState<string | null>(null);
   const { t } = useLanguage();
 
   const loadMore = useCallback(async () => {
@@ -57,6 +59,7 @@ export default function GalleryGrid({ initialPhotos, initialTotal, initialPage, 
                 key={photo.id}
                 photo={photo}
                 onClick={() => setLightboxIndex(index)}
+                onReport={() => setReportPhotoId(photo.id)}
               />
             ))}
           </div>
@@ -82,6 +85,16 @@ export default function GalleryGrid({ initialPhotos, initialTotal, initialPage, 
           onNext={() => setLightboxIndex((i) => (i !== null && i < photos.length - 1 ? i + 1 : i))}
           hasPrev={lightboxIndex > 0}
           hasNext={lightboxIndex < photos.length - 1}
+          onReport={() => {
+            setReportPhotoId(photos[lightboxIndex].id);
+          }}
+        />
+      )}
+
+      {reportPhotoId && (
+        <ReportPhotoModal
+          photoId={reportPhotoId}
+          onClose={() => setReportPhotoId(null)}
         />
       )}
     </>

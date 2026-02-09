@@ -117,7 +117,8 @@ export default function AdminAutomationsPage() {
             { endpoint: '/api/automations/auto-chronicle', label: 'Auto Chronicle', icon: '{"📝"}', desc: "Generate yesterday's match chronicle (football-data.org)" },
             { endpoint: '/api/automations/news-digest', label: 'Generate Digest', icon: '{"📰"}', desc: 'Create news digest from RSS feeds' },
             { endpoint: '/api/automations/match-chronicle', label: 'Check Match (legacy)', icon: '{"⚽"}', desc: 'Generate chronicle if Barça played today (API-Football)' },
-            { endpoint: '/api/automations/sync-matches', label: 'Sync Calendar', icon: '{"🔄"}', desc: 'Sync matches from football API' },
+            { endpoint: '/api/automations/sync-matches', label: 'Sync Calendar', icon: '{"🔄"}', desc: 'Sync all matches (La Liga + CL + Copa) + download crests' },
+            { endpoint: '/api/competitions/refresh', label: 'Refresh Competitions', icon: '{"🏆"}', desc: 'Update standings + AI predictions' },
             { endpoint: '/api/automations/sync-packages', label: 'Sync Packages', icon: '{"🎟️"}', desc: 'Sync StubHub events + GYG activities' },
             { endpoint: '/api/automations/generate-guide', label: 'Generate Guide', icon: '{"📚"}', desc: 'Create a new travel guide with AI' },
             { endpoint: '/api/automations/seed', label: 'Seed 10 Weeks', icon: '{"🌱"}', desc: 'Generate retroactive content (slow)' },
@@ -199,8 +200,8 @@ export default function AdminAutomationsPage() {
           <div className="flex items-center gap-3">
             <span className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600">{"🔄"}</span>
             <div>
-              <div className="font-medium text-[#1A1A2E]">Calendar Sync</div>
-              <div className="text-xs text-gray-500">Weekly on Mondays at 7:00 AM UTC</div>
+              <div className="font-medium text-[#1A1A2E]">Calendar Sync (La Liga + CL + Copa)</div>
+              <div className="text-xs text-gray-500">Daily at 7:00 AM UTC</div>
             </div>
           </div>
           <div className="flex items-center gap-3">

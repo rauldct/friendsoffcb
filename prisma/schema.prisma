@@ -235,5 +235,19 @@ model Photo {
   status          String    @default("pending")
   rejectionReason String?
   moderatedAt     DateTime?
+  reportCount     Int       @default(0)
+  reports         PhotoReport[]
   createdAt       DateTime  @default(now())
+}
+
+model PhotoReport {
+  id          String   @id @default(uuid())
+  photoId     String
+  photo       Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  reason      String
+  description String?  @db.Text
+  reporterIp  String?
+  status      String   @default("new")
+  createdAt   DateTime @default(now())
+  @@index([photoId])
 }

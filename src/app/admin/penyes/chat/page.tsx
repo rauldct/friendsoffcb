@@ -87,8 +87,12 @@ export default function PenyaChatPage() {
     setLoadingStats(true);
     try {
       const res = await fetch("/api/admin/penyes/rag");
-      const data = await res.json();
-      setStats(data);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.totalPenyes === "number") {
+          setStats(data);
+        }
+      }
     } catch {
       // ignore
     }
@@ -111,12 +115,12 @@ export default function PenyaChatPage() {
       });
       const data = await res.json();
 
-      if (data.error) {
-        setMessages(prev => [...prev, { role: "assistant", content: `Error: ${data.error}` }]);
+      if (!res.ok || data.error) {
+        setMessages(prev => [...prev, { role: "assistant", content: `Error: ${data.error || "Server error"}` }]);
       } else {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: data.answer,
+          content: data.answer || "No response",
           sources: data.sources,
         }]);
       }
@@ -232,7 +236,7 @@ export default function PenyaChatPage() {
                         <span
                           key={j}
                           className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs"
-                          title={`${s.chunkType} - similarity: ${(s.similarity * 100).toFixed(0)}%`}
+                          title={`${s.chunkType} - similarity: ${(typeof s.similarity === "number" ? (s.similarity * 100).toFixed(0) : "?")}%`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                           {s.penyaName} ({s.city})

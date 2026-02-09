@@ -9,7 +9,12 @@ export async function GET(request: NextRequest) {
   const limit = 24;
   const skip = (page - 1) * limit;
 
-  const where = status ? { status } : {};
+  // Special filter: "reported" shows photos with reportCount > 0
+  const where = status === "reported"
+    ? { reportCount: { gt: 0 } }
+    : status
+      ? { status }
+      : {};
 
   const [photos, total] = await Promise.all([
     prisma.photo.findMany({
@@ -51,12 +56,24 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Photo not found." }, { status: 404 });
     }
 
+    // If approving a photo with reports, reset reportCount and dismiss reports
+    const extraData: Record<string, unknown> = {};
+    if (status === "approved" && photo.reportCount > 0) {
+      extraData.reportCount = 0;
+      // Dismiss all reports for this photo
+      await prisma.photoReport.updateMany({
+        where: { photoId: id, status: "new" },
+        data: { status: "dismissed" },
+      });
+    }
+
     const updated = await prisma.photo.update({
       where: { id },
       data: {
         status,
         rejectionReason: status === "rejected" ? (rejectionReason || "Rejected by admin") : null,
         moderatedAt: new Date(),
+        ...extraData,
       },
     });
 
