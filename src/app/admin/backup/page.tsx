@@ -18,6 +18,7 @@ export default function AdminBackupPage() {
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
   const [showRestoreUpload, setShowRestoreUpload] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchBackups = useCallback(async () => {
@@ -124,6 +125,7 @@ export default function AdminBackupPage() {
 
   const handleDelete = async (filename: string) => {
     setDeleting(filename);
+    setConfirmDelete(null);
     try {
       const res = await fetch(`/api/admin/backup?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
       const data = await res.json();
@@ -244,39 +246,21 @@ export default function AdminBackupPage() {
                   >
                     Download
                   </button>
-                  {confirmRestore === backup.filename ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleRestore(backup.filename)}
-                        disabled={restoring !== null}
-                        className="px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-medium hover:bg-orange-600 disabled:opacity-50"
-                      >
-                        {restoring === backup.filename ? 'Restoring...' : 'Confirm'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmRestore(null)}
-                        className="px-2 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs hover:bg-gray-200"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmRestore(backup.filename)}
-                      disabled={restoring !== null}
-                      className="px-3 py-1.5 rounded-lg bg-orange-100 text-orange-700 text-xs font-medium hover:bg-orange-200 transition-colors disabled:opacity-50"
-                      title="Restore"
-                    >
-                      Restore
-                    </button>
-                  )}
                   <button
-                    onClick={() => handleDelete(backup.filename)}
+                    onClick={() => setConfirmRestore(backup.filename)}
+                    disabled={restoring !== null}
+                    className="px-3 py-1.5 rounded-lg bg-orange-100 text-orange-700 text-xs font-medium hover:bg-orange-200 transition-colors disabled:opacity-50"
+                    title="Restore"
+                  >
+                    {restoring === backup.filename ? 'Restoring...' : 'Restore'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(backup.filename)}
                     disabled={deleting === backup.filename}
                     className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-xs font-medium hover:bg-red-200 transition-colors disabled:opacity-50"
                     title="Delete"
                   >
-                    {deleting === backup.filename ? '...' : 'Delete'}
+                    {deleting === backup.filename ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -295,6 +279,83 @@ export default function AdminBackupPage() {
           <li>After restoring, you may need to restart the application for changes to take full effect</li>
         </ul>
       </div>
+
+      {/* Restore Confirmation Modal */}
+      {confirmRestore && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setConfirmRestore(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-[#1A1A2E]">Restore Database</h3>
+                <p className="text-sm text-gray-500">This action will replace all current data</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Are you sure you want to restore the database from:
+            </p>
+            <p className="text-sm font-mono bg-gray-50 p-2 rounded-lg mb-4 break-all">{confirmRestore}</p>
+            <p className="text-xs text-gray-400 mb-5">A pre-restore backup will be created automatically before restoring.</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmRestore(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRestore(confirmRestore)}
+                disabled={restoring !== null}
+                className="px-5 py-2 rounded-xl text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 transition-colors"
+              >
+                {restoring ? 'Restoring...' : 'Yes, Restore'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-[#1A1A2E]">Delete Backup</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Are you sure you want to permanently delete this backup?
+            </p>
+            <p className="text-sm font-mono bg-gray-50 p-2 rounded-lg mb-5 break-all">{confirmDelete}</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting !== null}
+                className="px-5 py-2 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

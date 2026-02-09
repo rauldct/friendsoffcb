@@ -8,13 +8,13 @@ import prisma from "@/lib/prisma";
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const [packages, posts, matches] = await Promise.all([
+  const [packages, newsArticles, matches] = await Promise.all([
     prisma.matchPackage.findMany({
       where: { featured: true, status: "upcoming" },
       orderBy: { matchDate: "asc" },
       take: 6,
     }),
-    prisma.blogPost.findMany({
+    prisma.newsArticle.findMany({
       where: { status: "published" },
       orderBy: { publishedAt: "desc" },
       take: 6,
@@ -35,10 +35,16 @@ export default async function HomePage() {
     activities: p.activities as any[],
   }));
 
-  const serializedPosts = posts.map(p => ({
-    ...p,
-    publishedAt: p.publishedAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
+  const serializedNews = newsArticles.map(a => ({
+    id: a.id,
+    slug: a.slug,
+    title: a.title,
+    excerpt: a.excerpt,
+    coverImage: a.coverImage,
+    category: a.category,
+    author: a.author,
+    matchResult: a.matchResult,
+    publishedAt: a.publishedAt.toISOString(),
   }));
 
   const serializedMatches = matches.map(m => ({
@@ -51,7 +57,7 @@ export default async function HomePage() {
       <HeroSection />
       <NextMatchesCarousel matches={serializedMatches} />
       <FeaturedPackages packages={serializedPackages} />
-      <LatestNews posts={serializedPosts} />
+      <LatestNews articles={serializedNews} />
       <NewsletterSection />
     </>
   );
