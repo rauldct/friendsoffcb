@@ -195,6 +195,8 @@ model Newsletter {
   subject        String
   htmlContent    String    @db.Text
   textContent    String    @db.Text @default("")
+  htmlContentEs  String?   @db.Text
+  textContentEs  String?   @db.Text
   status         String    @default("draft") // "draft" | "sending" | "sent" | "failed"
   sentAt         DateTime?
   recipientCount Int       @default(0)
@@ -204,6 +206,18 @@ model Newsletter {
   errorMessage   String?   @db.Text
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  opens          NewsletterOpen[]
+}
+
+model NewsletterOpen {
+  id             String     @id @default(uuid())
+  newsletterId   String
+  newsletter     Newsletter @relation(fields: [newsletterId], references: [id], onDelete: Cascade)
+  subscriberId   String
+  openedAt       DateTime   @default(now())
+
+  @@unique([newsletterId, subscriberId])
+  @@index([subscriberId])
 }
 
 model Feedback {

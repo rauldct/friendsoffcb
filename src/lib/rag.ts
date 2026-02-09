@@ -18,6 +18,33 @@ async function getAnthropicKey(): Promise<string> {
   return process.env.ANTHROPIC_API_KEY || "";
 }
 
+// ============== TABLE SETUP ==============
+
+let tableEnsured = false;
+
+async function ensureRAGTable(): Promise<void> {
+  if (tableEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS penya_chunks (
+        id SERIAL PRIMARY KEY,
+        penya_id UUID NOT NULL,
+        chunk_type VARCHAR(50) NOT NULL,
+        chunk_text TEXT NOT NULL,
+        embedding vector(384) NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_penya_chunks_penya_id ON penya_chunks (penya_id)
+    `);
+    tableEnsured = true;
+  } catch (err) {
+    console.error("[RAG] ensureRAGTable error:", err);
+  }
+}
+
 // ============== EMBEDDINGS ==============
 
 async function generateEmbedding(text: string): Promise<number[]> {
@@ -183,6 +210,7 @@ function splitText(text: string, maxLen: number): string[] {
 // ============== INDEXING ==============
 
 export async function indexPenya(penyaId: string): Promise<{ chunksCreated: number }> {
+  await ensureRAGTable();
   const penya = await prisma.penya.findUnique({ where: { id: penyaId } });
   if (!penya) throw new Error("Penya not found");
 
@@ -255,6 +283,7 @@ interface SearchResult {
 }
 
 export async function searchSimilar(query: string, limit: number = 10): Promise<SearchResult[]> {
+  await ensureRAGTable();
   const embedding = await generateEmbedding(query);
   const embStr = `[${embedding.join(",")}]`;
 
@@ -368,6 +397,7 @@ export async function getRAGStats(): Promise<{
   enrichedPenyes: number;
   chunksByType: Record<string, number>;
 }> {
+  await ensureRAGTable();
   const [chunkCount] = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
     `SELECT COUNT(*) as count FROM penya_chunks`
   );

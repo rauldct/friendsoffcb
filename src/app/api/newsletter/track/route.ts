@@ -10,13 +10,26 @@ const PIXEL_GIF = Buffer.from(
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const newsletterId = searchParams.get("nid");
+  const subscriberId = searchParams.get("sid");
 
   if (newsletterId) {
     try {
+      // Increment aggregate openCount
       await prisma.newsletter.update({
         where: { id: newsletterId },
         data: { openCount: { increment: 1 } },
       });
+
+      // Track per-subscriber open (only first open creates the record)
+      if (subscriberId) {
+        await prisma.newsletterOpen.upsert({
+          where: {
+            newsletterId_subscriberId: { newsletterId, subscriberId },
+          },
+          create: { newsletterId, subscriberId },
+          update: {}, // no-op on subsequent opens
+        });
+      }
     } catch {
       // Silently ignore tracking errors
     }

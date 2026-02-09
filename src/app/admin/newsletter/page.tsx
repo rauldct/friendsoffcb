@@ -17,6 +17,20 @@ interface Newsletter {
   createdAt: string;
 }
 
+interface OpenEntry {
+  email: string;
+  name: string | null;
+  openedAt: string;
+}
+
+interface StatsData {
+  uniqueOpens: number;
+  totalOpens: number;
+  openRate: string;
+  sentCount: number;
+  opens: OpenEntry[];
+}
+
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-yellow-100 text-yellow-700",
   sending: "bg-blue-100 text-blue-700",
@@ -38,6 +52,10 @@ export default function AdminNewsletterPage() {
   const [subscriberCount, setSubscriberCount] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Stats modal
+  const [statsModal, setStatsModal] = useState<{ newsletter: Newsletter; data: StatsData } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const fetchNewsletters = useCallback(async () => {
     setLoading(true);
@@ -161,6 +179,18 @@ export default function AdminNewsletterPage() {
 
   const handlePreview = (id: string) => {
     window.open(`/api/admin/newsletter/${id}/preview`, "_blank");
+  };
+
+  const handleStats = async (nl: Newsletter) => {
+    setStatsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/newsletter/${nl.id}/stats`);
+      const data = await res.json();
+      setStatsModal({ newsletter: nl, data });
+    } catch {
+      setError("Failed to load stats");
+    }
+    setStatsLoading(false);
   };
 
   // Stats
@@ -316,6 +346,15 @@ export default function AdminNewsletterPage() {
                           >
                             Preview
                           </button>
+                          {nl.status === "sent" && (
+                            <button
+                              onClick={() => handleStats(nl)}
+                              disabled={statsLoading}
+                              className="text-[#A50044] hover:text-[#7a0030] text-xs font-medium disabled:opacity-50"
+                            >
+                              Stats
+                            </button>
+                          )}
                           {nl.status === "draft" && (
                             <>
                               <button
@@ -359,6 +398,66 @@ export default function AdminNewsletterPage() {
           </table>
         </div>
       </div>
+
+      {/* Stats Modal */}
+      {statsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setStatsModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-heading font-bold text-[#1A1A2E] text-lg">Newsletter Stats</h2>
+              <button onClick={() => setStatsModal(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600 mb-4 truncate">{statsModal.newsletter.subject}</p>
+
+              {/* Metrics */}
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-[#004D98]">{statsModal.data.uniqueOpens}</div>
+                  <div className="text-xs text-gray-500">Unique Opens</div>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-purple-600">{statsModal.data.totalOpens}</div>
+                  <div className="text-xs text-gray-500">Total Opens</div>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-green-600">{statsModal.data.openRate}%</div>
+                  <div className="text-xs text-gray-500">Open Rate</div>
+                </div>
+              </div>
+
+              {/* Subscribers who opened */}
+              <h3 className="text-sm font-medium text-gray-700 mb-2">
+                Subscribers who opened ({statsModal.data.opens.length})
+              </h3>
+              <div className="max-h-60 overflow-y-auto border border-gray-100 rounded-lg">
+                {statsModal.data.opens.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">No opens tracked yet</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Opened At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {statsModal.data.opens.map((o, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-gray-700">{o.email}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">
+                            {new Date(o.openedAt).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

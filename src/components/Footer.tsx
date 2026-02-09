@@ -5,6 +5,7 @@ import FeedbackModal from "./FeedbackModal";
 
 export default function Footer() {
   const [email, setEmail] = useState("");
+  const [language, setLanguage] = useState("en");
   const [status, setStatus] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
 
@@ -14,7 +15,7 @@ export default function Footer() {
       const res = await fetch("/api/subscribers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "footer" }),
+        body: JSON.stringify({ email, language, source: "footer" }),
       });
       if (res.ok) { setStatus("success"); setEmail(""); }
       else setStatus("error");
@@ -54,9 +55,15 @@ export default function Footer() {
           <div>
             <h4 className="font-heading font-bold mb-4">Newsletter</h4>
             <p className="text-sm text-gray-400 mb-3">Get exclusive deals & matchday tips.</p>
-            <form onSubmit={handleSubscribe} className="flex gap-2">
-              <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="Your email" className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#EDBB00]"/>
-              <button type="submit" className="bg-[#EDBB00] text-[#1A1A2E] px-4 py-2 rounded-lg font-bold text-sm hover:bg-yellow-500">Go</button>
+            <form onSubmit={handleSubscribe} className="space-y-2">
+              <div className="flex gap-2">
+                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="Your email" className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#EDBB00]"/>
+                <select value={language} onChange={e=>setLanguage(e.target.value)} className="px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white focus:outline-none focus:border-[#EDBB00] appearance-none cursor-pointer" title="Newsletter language">
+                  <option value="en" className="bg-[#1A1A2E]">EN</option>
+                  <option value="es" className="bg-[#1A1A2E]">ES</option>
+                </select>
+                <button type="submit" className="bg-[#EDBB00] text-[#1A1A2E] px-4 py-2 rounded-lg font-bold text-sm hover:bg-yellow-500">Go</button>
+              </div>
             </form>
             {status==="success"&&<p className="text-green-400 text-xs mt-2">Subscribed!</p>}
             {status==="error"&&<p className="text-red-400 text-xs mt-2">Something went wrong.</p>}

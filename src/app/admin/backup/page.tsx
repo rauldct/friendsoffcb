@@ -276,6 +276,7 @@ export default function AdminBackupPage() {
           <li>Backups are stored on the server at <code className="bg-white px-1 py-0.5 rounded text-xs">/var/www/friendsofbarca/backups/</code></li>
           <li>A pre-restore backup is automatically created before any restore operation</li>
           <li>Backup format: PostgreSQL plain SQL (compatible with <code className="bg-white px-1 py-0.5 rounded text-xs">psql</code>)</li>
+          <li>Includes <strong>all tables</strong>: Prisma models + RAG database (penya_chunks, pgvector embeddings)</li>
           <li>After restoring, you may need to restart the application for changes to take full effect</li>
         </ul>
       </div>
