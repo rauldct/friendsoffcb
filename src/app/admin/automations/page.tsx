@@ -132,6 +132,17 @@ export default function AdminAutomationsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState('');
   const [infoModal, setInfoModal] = useState<ScheduleInfo | null>(null);
+  const [utcTime, setUtcTime] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setUtcTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -274,7 +285,7 @@ export default function AdminAutomationsPage() {
       {/* Cron Schedule */}
       <div className="bg-white rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-heading font-bold text-[#1A1A2E]">Automation Schedule</h2>
+          <h2 className="font-heading font-bold text-[#1A1A2E]">Automation Schedule <span className="text-xs font-normal text-gray-400 ml-1">({utcTime} UTC)</span></h2>
         </div>
         <div className="p-5 space-y-3 text-sm">
           {SCHEDULE_ITEMS.map((item) => {
