@@ -25,6 +25,7 @@ export const revalidate = 300;
 export default async function CalendarPage() {
   const matches = await prisma.match.findMany({
     orderBy: { date: "asc" },
+    where: { date: { gte: new Date() } },
   });
 
   const serialized = matches.map(m => ({

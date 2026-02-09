@@ -448,12 +448,31 @@ Only include matches involving FC Barcelona. Use real data from the search resul
     text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
     const parsed = JSON.parse(text);
 
+    // Look up crests from the Match table for Copa del Rey opponents
+    const copaMatches = await prisma.match.findMany({
+      where: { competition: "Copa del Rey" },
+      select: { opponent: true, opponentLogo: true },
+    });
+    const crestMap: Record<string, string> = {};
+    for (const cm of copaMatches) {
+      if (cm.opponentLogo) crestMap[cm.opponent.toLowerCase()] = cm.opponentLogo;
+    }
+    const barcaCrest = "https://crests.football-data.org/81.png";
+    const findCrest = (name: string): string => {
+      const lower = name.toLowerCase();
+      if (lower.includes("barcelona") || lower.includes("barça")) return barcaCrest;
+      for (const [key, val] of Object.entries(crestMap)) {
+        if (lower.includes(key.split(" ")[0].toLowerCase()) || key.toLowerCase().includes(lower.split(" ")[0].toLowerCase())) return val;
+      }
+      return "";
+    };
+
     const recentResults: MatchEntry[] = (parsed.recentResults || []).map(
       (m: { date: string; homeTeam: string; awayTeam: string; homeGoals: number; awayGoals: number; round?: string }, i: number) => ({
         fixture: { id: 90000 + i, date: m.date, status: { short: "FT" } },
         teams: {
-          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: "" },
-          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: "" },
+          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: findCrest(m.homeTeam) },
+          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: findCrest(m.awayTeam) },
         },
         league: { id: 143, name: "Copa del Rey", logo: "" },
         goals: { home: m.homeGoals ?? null, away: m.awayGoals ?? null },
@@ -464,8 +483,8 @@ Only include matches involving FC Barcelona. Use real data from the search resul
       (m: { date: string; homeTeam: string; awayTeam: string; round?: string }, i: number) => ({
         fixture: { id: 91000 + i, date: m.date, status: { short: "NS" } },
         teams: {
-          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: "" },
-          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: "" },
+          home: { id: m.homeTeam.includes("Barcelona") || m.homeTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.homeTeam, logo: findCrest(m.homeTeam) },
+          away: { id: m.awayTeam.includes("Barcelona") || m.awayTeam.includes("Barça") ? BARCA_ID_FOOTBALL_DATA : 0, name: m.awayTeam, logo: findCrest(m.awayTeam) },
         },
         league: { id: 143, name: "Copa del Rey", logo: "" },
         goals: { home: null, away: null },

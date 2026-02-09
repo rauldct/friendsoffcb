@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useRef } from "react";
 import { MatchData } from "@/types";
 
@@ -24,7 +25,20 @@ export default function NextMatchesCarousel({ matches }: { matches: MatchData[] 
           {matches.map(m => (
             <div key={m.id} className="min-w-[260px] snap-start card p-5 flex-shrink-0">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-[#F5F5F5] flex items-center justify-center text-lg">⚽</div>
+                <div className="w-10 h-10 rounded-full bg-[#F5F5F5] flex items-center justify-center text-lg overflow-hidden">
+                  {m.opponentLogo ? (
+                    <Image
+                      src={m.opponentLogo}
+                      alt={m.opponent}
+                      width={32}
+                      height={32}
+                      className="object-contain"
+                      unoptimized={m.opponentLogo.startsWith("http")}
+                    />
+                  ) : (
+                    <span>⚽</span>
+                  )}
+                </div>
                 <div>
                   <p className="font-heading font-bold text-sm text-[#1A1A2E]">{m.opponent}</p>
                   <p className="text-xs text-gray-500">{m.competition}</p>

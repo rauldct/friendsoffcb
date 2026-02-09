@@ -5,6 +5,13 @@ import path from "path";
 
 const BACKUP_DIR = "/var/www/friendsofbarca/backups";
 
+function getDbPassword(): string {
+  // Extract password from DATABASE_URL
+  const url = process.env.DATABASE_URL || "";
+  const match = url.match(/:\/\/[^:]+:([^@]+)@/);
+  return match?.[1] || "";
+}
+
 function ensureBackupDir() {
   if (!existsSync(BACKUP_DIR)) mkdirSync(BACKUP_DIR, { recursive: true });
 }
@@ -102,14 +109,14 @@ export async function POST(request: NextRequest) {
           const preRestoreFilename = `friendsofbarca-pre-restore-${preRestoreTimestamp}.sql`;
           const preRestorePath = path.join(BACKUP_DIR, preRestoreFilename);
           execSync(
-            `pg_dump -U friendsofbarca -d friendsofbarca -F p -f "${preRestorePath}"`,
-            { env: { ...process.env, PGPASSWORD: process.env.DB_PASSWORD || "" }, timeout: 60000 }
+            `pg_dump -h localhost -U friendsofbarca -d friendsofbarca -F p -f "${preRestorePath}"`,
+            { env: { ...process.env, PGPASSWORD: getDbPassword() }, timeout: 60000 }
           );
 
           // Restore the database
           execSync(
-            `psql -U friendsofbarca -d friendsofbarca -f "${tempFile}"`,
-            { env: { ...process.env, PGPASSWORD: process.env.DB_PASSWORD || "" }, timeout: 120000 }
+            `psql -h localhost -U friendsofbarca -d friendsofbarca -f "${tempFile}"`,
+            { env: { ...process.env, PGPASSWORD: getDbPassword() }, timeout: 120000 }
           );
 
           return NextResponse.json({
@@ -130,8 +137,8 @@ export async function POST(request: NextRequest) {
     const filepath = path.join(BACKUP_DIR, filename);
 
     execSync(
-      `pg_dump -U friendsofbarca -d friendsofbarca -F p -f "${filepath}"`,
-      { env: { ...process.env, PGPASSWORD: process.env.DB_PASSWORD || "" }, timeout: 60000 }
+      `pg_dump -h localhost -U friendsofbarca -d friendsofbarca -F p -f "${filepath}"`,
+      { env: { ...process.env, PGPASSWORD: getDbPassword() }, timeout: 60000 }
     );
 
     const stats = statSync(filepath);

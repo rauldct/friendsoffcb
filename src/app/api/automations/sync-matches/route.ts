@@ -67,6 +67,14 @@ function normalizeCompetition(name: string): string {
   return name;
 }
 
+// Format match time, return "TBD" for midnight UTC (time not yet set)
+function formatMatchTime(d: Date): string {
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) return "TBD";
+  return d.toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/Madrid",
+  });
+}
+
 interface MatchEntry {
   date: Date;
   time: string;
@@ -107,9 +115,7 @@ export async function POST() {
           const isHome = m.homeTeam.id === BARCA_FD_ID;
           allMatches.push({
             date: matchDate,
-            time: matchDate.toLocaleTimeString("en-US", {
-              hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/Madrid",
-            }),
+            time: formatMatchTime(matchDate),
             opponent: isHome ? m.awayTeam.name : m.homeTeam.name,
             opponentCrestUrl: isHome ? (m.awayTeam.crest || "") : (m.homeTeam.crest || ""),
             competition: normalizeCompetition(m.competition?.name || ""),
@@ -160,9 +166,7 @@ export async function POST() {
 
           allMatches.push({
             date: matchDate,
-            time: matchDate.toLocaleTimeString("en-US", {
-              hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/Madrid",
-            }),
+            time: formatMatchTime(matchDate),
             opponent,
             opponentCrestUrl: isHome ? (fix.teams.away.logo || "") : (fix.teams.home.logo || ""),
             competition: "Copa del Rey",

@@ -22,7 +22,6 @@ export default async function HomePage() {
     prisma.match.findMany({
       orderBy: { date: "asc" },
       where: { date: { gte: new Date() } },
-      take: 10,
     }),
   ]);
 

@@ -40,6 +40,9 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
     return true;
   });
 
+  const competitions = new Set(matches.map(m => m.competition));
+  const hasCL = competitions.has("Champions League");
+
   const grouped: Record<string, Match[]> = {};
   filtered.forEach(m => {
     const monthKey = new Date(m.date).toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -71,6 +74,20 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
             </button>
           ))}
         </div>
+
+        {/* Competition legend */}
+        <div className="flex flex-wrap justify-center gap-4 mb-6 text-sm">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#004D98]"></span> La Liga</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#EDBB00]"></span> Champions League</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#A50044]"></span> Copa del Rey</span>
+        </div>
+
+        {/* CL notice if no CL matches yet */}
+        {!hasCL && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-center text-sm text-blue-700">
+            Champions League Round of 16 draw: <strong>February 27, 2026</strong>. Matches will be added automatically after the draw.
+          </div>
+        )}
 
         {/* Calendar Timeline */}
         {Object.keys(grouped).length === 0 ? (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import LanguageSelector from './LanguageSelector';
 import { useLanguage } from '@/lib/LanguageContext';
 
@@ -37,11 +38,7 @@ export default function Navbar() {
     <header className={`sticky top-0 z-50 w-full bg-white transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'shadow-none'}`}>
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" className="h-8 w-8" aria-hidden="true">
-            <circle cx="18" cy="18" r="17" fill="#1A1A2E" />
-            <path d="M18 3a15 15 0 1 0 0 30A15 15 0 0 0 18 3Zm0 2c1.5 0 2.9.3 4.2.7L18 9l-4.2-3.3A13 13 0 0 1 18 5Zm-8.5 4.3L13 12l-1.5 5-4.8 1.5A13 13 0 0 1 9.5 9.3ZM8 22.5l4.5-1L15 26l-2 4.5A13 13 0 0 1 8 22.5Zm15 8L21 26l2.5-4.5 4.5 1A13 13 0 0 1 23 30.5Zm7.3-11L25.5 17 24 12l3.5-2.7A13 13 0 0 1 30.3 19.5Z" fill="white" opacity="0.9" />
-            <circle cx="18" cy="18" r="4" fill="#EDBB00" />
-          </svg>
+          <Image src="/images/fcb-crest.png" alt="FC Barcelona" width={32} height={32} className="h-8 w-8" priority />
           <span>Friends of <span className="text-[#A50044]">Bar&ccedil;a</span></span>
         </Link>
 
