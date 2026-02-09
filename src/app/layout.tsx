@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
+import PageViewTracker from "@/components/PageViewTracker";
 import { LanguageProvider } from "@/lib/LanguageContext";
 
 export const metadata: Metadata = {
@@ -127,6 +128,7 @@ export default function RootLayout({
       </head>
       <body>
         <GoogleAnalytics />
+        <PageViewTracker />
         <LanguageProvider>
           <LayoutWrapper>{children}</LayoutWrapper>
         </LanguageProvider>
