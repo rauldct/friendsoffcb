@@ -184,7 +184,9 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
       ],
     });
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    let text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Strip markdown code blocks if Claude wraps them
+    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
     const parsed = JSON.parse(text);
 
     const slug = slugify(`barca-news-digest-${publishDate.toISOString().slice(0, 10)}`);
@@ -364,7 +366,9 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
       ],
     });
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    let text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Strip markdown code blocks if Claude wraps them
+    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
     const parsed = JSON.parse(text);
 
     const article = await prisma.newsArticle.create({
@@ -504,7 +508,8 @@ Respond ONLY with valid JSON:
         ],
       });
 
-      const text = response.content[0].type === "text" ? response.content[0].text : "";
+      let text = response.content[0].type === "text" ? response.content[0].text : "";
+      text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
       const parsed = JSON.parse(text);
 
       await prisma.newsArticle.create({
@@ -588,7 +593,8 @@ Respond ONLY with valid JSON:
         ],
       });
 
-      const text = response.content[0].type === "text" ? response.content[0].text : "";
+      let text = response.content[0].type === "text" ? response.content[0].text : "";
+      text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
       const parsed = JSON.parse(text);
 
       await prisma.newsArticle.create({

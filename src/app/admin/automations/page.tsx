@@ -36,6 +36,7 @@ interface ScheduleInfo {
   days: number[] | null;
   monthDay?: number;
   info: string;
+  endpoint: string;
 }
 
 const SCHEDULE_ITEMS: ScheduleInfo[] = [
@@ -43,54 +44,63 @@ const SCHEDULE_ITEMS: ScheduleInfo[] = [
     icon: '\u{1F4F0}', bg: 'bg-blue-100', fg: 'text-blue-600',
     label: 'News Digest', desc: 'Mon & Thu at 8:00 AM UTC',
     hour: 8, minute: 0, days: [1, 4],
+    endpoint: '/api/automations/news-digest',
     info: 'Fetches articles from 6 RSS sources (FCB Official, Marca, Sport, Mundo Deportivo, ESPN, BBC), summarizes them with Claude AI, and publishes a news digest article on the /news page.'
   },
   {
     icon: '\u{1F4EC}', bg: 'bg-pink-100', fg: 'text-pink-600',
     label: 'Weekly Newsletter', desc: 'Monday at 8:00 AM UTC',
     hour: 8, minute: 0, days: [1],
+    endpoint: '/api/automations/newsletter-digest',
     info: 'Compiles the week\'s match chronicles, next match preview (with Barça form & opponent data from football-data.org), and news digests. Claude AI generates a bilingual (EN + ES) HTML newsletter with photos. Sent to all active subscribers via Resend, each receiving their preferred language version.'
   },
   {
     icon: '\u{1F4DD}', bg: 'bg-red-100', fg: 'text-red-600',
     label: 'Auto Chronicle (football-data.org)', desc: 'Daily at 10:00 UTC',
     hour: 10, minute: 0, days: null,
+    endpoint: '/api/automations/auto-chronicle',
     info: 'Checks football-data.org for any Barcelona match played yesterday. If found, generates a detailed match chronicle using Claude AI with the match data (score, scorers, competition, venue) and publishes it on /news.'
   },
   {
     icon: '\u26BD', bg: 'bg-orange-100', fg: 'text-orange-600',
     label: 'Match Chronicle (legacy)', desc: 'Daily at 23:30 UTC',
     hour: 23, minute: 30, days: null,
+    endpoint: '/api/automations/match-chronicle',
     info: 'Legacy fallback that uses API-Football to check if Barça played today. If the primary auto-chronicle (football-data.org) already created a chronicle, this one skips. Kept as a safety net.'
   },
   {
     icon: '\u{1F504}', bg: 'bg-green-100', fg: 'text-green-600',
     label: 'Calendar Sync (La Liga + CL + Copa)', desc: 'Daily at 7:00 AM UTC',
     hour: 7, minute: 0, days: null,
+    endpoint: '/api/automations/sync-matches',
     info: 'Fetches upcoming Barcelona matches from football-data.org (La Liga + Champions League) and API-Football (Copa del Rey). Downloads opponent crests as PNGs to /public/images/crests/. Updates the /calendar page with the latest schedule.'
   },
   {
     icon: '\u{1F3C6}', bg: 'bg-purple-100', fg: 'text-purple-600',
     label: 'Competition Data', desc: 'Daily at 6:00 AM UTC',
     hour: 6, minute: 0, days: null,
+    endpoint: '/api/competitions/refresh',
     info: 'Updates standings for La Liga, Champions League, and Copa del Rey from football-data.org (primary) and API-Football (fallback). Calculates Barça stats and generates AI predictions for each competition. Shown on /competitions.'
   },
   {
     icon: '\u{1F3AB}', bg: 'bg-yellow-100', fg: 'text-yellow-600',
     label: 'Package Sync (StubHub + GYG)', desc: 'Daily at 7:30 AM UTC',
     hour: 7, minute: 30, days: null,
+    endpoint: '/api/automations/sync-packages',
     info: 'Syncs match package data from StubHub (ticket availability and prices) and GetYourGuide (activities). Creates or updates match packages on /packages with affiliate links for tickets, hotels, and activities.'
   },
   {
     icon: '\u{1F3E0}', bg: 'bg-teal-100', fg: 'text-teal-600',
     label: 'Penyes Sync (Scraping)', desc: 'Monday at 5:00 AM UTC',
     hour: 5, minute: 0, days: [1],
+    endpoint: '/api/admin/penyes',
     info: 'Scrapes the official FCB supporter clubs directory from 3 URLs (Catalonia, Spain, World) using Cheerio. Updates the Penyes database with new clubs, cities, and regions. Currently tracking 1,217 penyes.'
   },
   {
     icon: '\u{1F4DA}', bg: 'bg-indigo-100', fg: 'text-indigo-600',
     label: 'Guide Generation', desc: 'Monthly, 1st at 9:00 AM UTC',
     hour: 9, minute: 0, days: null, monthDay: 1,
+    endpoint: '/api/automations/generate-guide',
     info: 'Generates a new AI-written travel guide for Barcelona visitors using Claude. Topics include stadium guides, neighborhood guides, restaurant recommendations, and travel tips. Published on /guides.'
   },
 ];
@@ -132,6 +142,9 @@ export default function AdminAutomationsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState('');
   const [infoModal, setInfoModal] = useState<ScheduleInfo | null>(null);
+  const [confirmRun, setConfirmRun] = useState<ScheduleInfo | null>(null);
+  const [scheduleRunning, setScheduleRunning] = useState<string | null>(null);
+  const [scheduleMsg, setScheduleMsg] = useState('');
   const [utcTime, setUtcTime] = useState('');
 
   useEffect(() => {
@@ -173,6 +186,25 @@ export default function AdminAutomationsPage() {
       setActionMsg(`${label}: Network error`);
     }
     setActionLoading(null);
+  };
+
+  const handleScheduleRun = async (item: ScheduleInfo) => {
+    setConfirmRun(null);
+    setScheduleRunning(item.label);
+    setScheduleMsg('');
+    try {
+      const res = await fetch(item.endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setScheduleMsg(`${item.label}: Success! ${data.message || ''}`);
+      } else {
+        setScheduleMsg(`${item.label}: ${data.error || data.message || 'Failed'}`);
+      }
+      fetchData();
+    } catch {
+      setScheduleMsg(`${item.label}: Network error`);
+    }
+    setScheduleRunning(null);
   };
 
   const statusBadge = (status: string) => {
@@ -306,14 +338,32 @@ export default function AdminAutomationsPage() {
                   </div>
                   <div className="text-xs text-gray-500">{item.desc}</div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 mr-2">
                   <div className="text-xs font-medium text-[#004D98]">{nextRun.dateStr}</div>
                   <div className="text-xs text-gray-400">{nextRun.timeStr}</div>
                 </div>
+                <button
+                  onClick={() => setConfirmRun(item)}
+                  disabled={scheduleRunning !== null}
+                  className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 disabled:opacity-40 transition-colors shrink-0"
+                  title={`Run ${item.label} now`}
+                >
+                  {scheduleRunning === item.label ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round"/></svg>
+                  ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  )}
+                </button>
               </div>
             );
           })}
         </div>
+        {scheduleMsg && (
+          <div className={`mx-5 mb-5 p-3 rounded-lg text-sm ${scheduleMsg.includes('Success') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+            {scheduleMsg}
+            <button onClick={() => setScheduleMsg('')} className="float-right font-bold">&times;</button>
+          </div>
+        )}
       </div>
 
       {/* Run History */}
@@ -367,6 +417,42 @@ export default function AdminAutomationsPage() {
           )}
         </div>
       </div>
+
+      {/* Confirm Run Modal */}
+      {confirmRun && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setConfirmRun(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-heading font-bold text-[#1A1A2E]">Run Now?</h2>
+              <button onClick={() => setConfirmRun(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="px-6 py-5">
+              <div className="flex items-center gap-3 mb-4">
+                <span className={`w-10 h-10 rounded-lg ${confirmRun.bg} flex items-center justify-center ${confirmRun.fg} text-xl`}>{confirmRun.icon}</span>
+                <div>
+                  <div className="font-medium text-[#1A1A2E]">{confirmRun.label}</div>
+                  <div className="text-xs text-gray-500">{confirmRun.desc}</div>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 mb-5">This will execute the automation immediately. Are you sure?</p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setConfirmRun(null)}
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleScheduleRun(confirmRun)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  Run Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info Modal */}
       {infoModal && (
