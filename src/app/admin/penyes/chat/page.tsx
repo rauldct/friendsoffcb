@@ -3,16 +3,18 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
+interface ChatSource {
+  name: string;
+  type: "penya" | "news";
+  detail: string;
+  chunkType: string;
+  similarity: number;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-  sources?: Array<{
-    penyaName: string;
-    city: string;
-    country: string;
-    chunkType: string;
-    similarity: number;
-  }>;
+  sources?: ChatSource[];
 }
 
 interface RAGStats {
@@ -21,6 +23,10 @@ interface RAGStats {
   totalPenyes: number;
   enrichedPenyes: number;
   chunksByType: Record<string, number>;
+  knowledgeChunks: number;
+  indexedArticles: number;
+  totalArticles: number;
+  knowledgeByType: Record<string, number>;
 }
 
 function renderMarkdown(text: string): string {
@@ -61,6 +67,10 @@ const CHUNK_TYPE_LABELS: Record<string, string> = {
   scraped_content: "Web scraping",
   website_validation: "Validacion web",
   notes: "Notas",
+  news_summary: "Resumen noticia",
+  news_sources: "Fuentes noticia",
+  news_content: "Contenido EN",
+  news_content_es: "Contenido ES",
 };
 
 export default function PenyaChatPage() {
@@ -71,6 +81,8 @@ export default function PenyaChatPage() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [reindexing, setReindexing] = useState(false);
   const [reindexResult, setReindexResult] = useState("");
+  const [reindexingNews, setReindexingNews] = useState(false);
+  const [reindexNewsResult, setReindexNewsResult] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -141,7 +153,7 @@ export default function PenyaChatPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setReindexResult(`Indexed ${data.indexed}/${data.total} penyes, ${data.chunks} chunks created${data.errors > 0 ? `, ${data.errors} errors` : ""}`);
+        setReindexResult(`Indexed ${data.indexed}/${data.total} penyes, ${data.chunks} chunks${data.errors > 0 ? `, ${data.errors} errors` : ""}`);
         fetchStats();
       } else {
         setReindexResult(`Error: ${data.error}`);
@@ -150,6 +162,28 @@ export default function PenyaChatPage() {
       setReindexResult("Error connecting to server");
     }
     setReindexing(false);
+  };
+
+  const handleReindexNews = async () => {
+    setReindexingNews(true);
+    setReindexNewsResult("");
+    try {
+      const res = await fetch("/api/admin/penyes/rag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reindex-news" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReindexNewsResult(`Indexed ${data.indexed}/${data.total} articles, ${data.chunks} chunks${data.errors > 0 ? `, ${data.errors} errors` : ""}`);
+        fetchStats();
+      } else {
+        setReindexNewsResult(`Error: ${data.error}`);
+      }
+    } catch {
+      setReindexNewsResult("Error connecting to server");
+    }
+    setReindexingNews(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -171,11 +205,11 @@ export default function PenyaChatPage() {
               </svg>
             </Link>
             <h1 className="text-2xl font-heading font-bold text-[#1A1A2E]">
-              Chat RAG - Penyes
+              Chat RAG - FC Barcelona
             </h1>
           </div>
           <p className="text-sm text-gray-500 mt-1 ml-8">
-            Pregunta sobre penyes del FC Barcelona usando la base de datos vectorial
+            Pregunta sobre penyes, noticias, partidos y todo sobre el FC Barcelona
           </p>
         </div>
       </div>
@@ -187,17 +221,19 @@ export default function PenyaChatPage() {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 && (
               <div className="text-center py-12">
-                <div className="text-5xl mb-4">🏠</div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">Chat con tus Penyes</h3>
+                <div className="text-5xl mb-4">&#9917;</div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">Base de Conocimiento FC Barcelona</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
-                  Pregunta cualquier cosa sobre las penyes del FC Barcelona. El sistema busca en la base de datos vectorial y responde con informacion real.
+                  Pregunta cualquier cosa sobre el FC Barcelona. El sistema busca en penyes, noticias, cronicas de partidos, previews y digests.
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {[
                     "Que penyes hay en Madrid?",
-                    "Cual es la penya mas antigua?",
-                    "Penyes con pagina web en Catalunya?",
-                    "Donde puedo contactar una penya en Londres?",
+                    "Ultimo resultado del Barca?",
+                    "Resumen noticias de esta semana",
+                    "Proximo partido del Barcelona?",
+                    "Penyes con web en Catalunya?",
+                    "Noticias sobre fichajes recientes",
                   ].map(q => (
                     <button
                       key={q}
@@ -235,11 +271,21 @@ export default function PenyaChatPage() {
                       {msg.sources.map((s, j) => (
                         <span
                           key={j}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs"
-                          title={`${s.chunkType} - similarity: ${(typeof s.similarity === "number" ? (s.similarity * 100).toFixed(0) : "?")}%`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
+                            s.type === "news"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-indigo-50 text-indigo-700"
+                          }`}
+                          title={`${CHUNK_TYPE_LABELS[s.chunkType] || s.chunkType} - similarity: ${(typeof s.similarity === "number" ? (s.similarity * 100).toFixed(0) : "?")}%`}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                          {s.penyaName} ({s.city})
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            s.type === "news" ? "bg-amber-400" : "bg-indigo-400"
+                          }`} />
+                          {s.type === "news" ? (
+                            <>{s.detail}</>
+                          ) : (
+                            <>{s.name} ({s.detail})</>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -256,7 +302,7 @@ export default function PenyaChatPage() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    <span className="text-sm text-gray-500">Buscando en la base de datos vectorial...</span>
+                    <span className="text-sm text-gray-500">Buscando en la base de conocimiento...</span>
                   </div>
                 </div>
               </div>
@@ -272,7 +318,7 @@ export default function PenyaChatPage() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Pregunta sobre penyes..."
+                placeholder="Pregunta sobre el FC Barcelona..."
                 rows={1}
                 className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#004D98]/30 focus:border-[#004D98]"
                 style={{ maxHeight: "120px" }}
@@ -299,15 +345,17 @@ export default function PenyaChatPage() {
               <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
               </svg>
-              RAG Database
+              Base de Conocimiento
             </h3>
 
             {loadingStats ? (
               <div className="text-xs text-gray-400">Cargando stats...</div>
             ) : stats ? (
               <div className="space-y-2">
+                {/* Penyes section */}
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">Penyes</div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Total penyes</span>
+                  <span className="text-gray-500">Total</span>
                   <span className="font-medium text-[#1A1A2E]">{stats.totalPenyes}</span>
                 </div>
                 <div className="flex justify-between text-xs">
@@ -319,16 +367,12 @@ export default function PenyaChatPage() {
                   <span className="font-medium text-indigo-600">{stats.indexedPenyes}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">Total chunks</span>
+                  <span className="text-gray-500">Chunks</span>
                   <span className="font-medium text-[#1A1A2E]">{stats.totalChunks}</span>
                 </div>
 
-                {/* Progress bar */}
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-gray-400 mb-1">
-                    <span>Indexed</span>
-                    <span>{stats.totalPenyes > 0 ? Math.round((stats.indexedPenyes / stats.totalPenyes) * 100) : 0}%</span>
-                  </div>
+                {/* Progress bar penyes */}
+                <div className="mt-1">
                   <div className="w-full bg-gray-100 rounded-full h-1.5">
                     <div
                       className="bg-indigo-500 rounded-full h-1.5 transition-all"
@@ -337,13 +381,46 @@ export default function PenyaChatPage() {
                   </div>
                 </div>
 
-                {/* Chunks by type */}
-                {Object.keys(stats.chunksByType).length > 0 && (
+                {/* News section */}
+                <div className="mt-3 pt-3 border-t">
+                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">Noticias</div>
+                  <div className="flex justify-between text-xs mt-2">
+                    <span className="text-gray-500">Total articulos</span>
+                    <span className="font-medium text-[#1A1A2E]">{stats.totalArticles}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Indexed (RAG)</span>
+                    <span className="font-medium text-amber-600">{stats.indexedArticles}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Chunks</span>
+                    <span className="font-medium text-[#1A1A2E]">{stats.knowledgeChunks}</span>
+                  </div>
+
+                  {/* Progress bar news */}
+                  <div className="mt-1">
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className="bg-amber-500 rounded-full h-1.5 transition-all"
+                        style={{ width: `${stats.totalArticles > 0 ? (stats.indexedArticles / stats.totalArticles) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chunks by type - combined */}
+                {(Object.keys(stats.chunksByType).length > 0 || Object.keys(stats.knowledgeByType).length > 0) && (
                   <div className="mt-3 pt-3 border-t">
                     <div className="text-xs font-medium text-gray-500 mb-2">Chunks por tipo</div>
                     {Object.entries(stats.chunksByType).map(([type, count]) => (
                       <div key={type} className="flex justify-between text-xs py-0.5">
                         <span className="text-gray-400">{CHUNK_TYPE_LABELS[type] || type}</span>
+                        <span className="text-gray-600">{count}</span>
+                      </div>
+                    ))}
+                    {Object.entries(stats.knowledgeByType).map(([type, count]) => (
+                      <div key={type} className="flex justify-between text-xs py-0.5">
+                        <span className="text-amber-500">{CHUNK_TYPE_LABELS[type] || type}</span>
                         <span className="text-gray-600">{count}</span>
                       </div>
                     ))}
@@ -355,11 +432,11 @@ export default function PenyaChatPage() {
             )}
           </div>
 
-          {/* Reindex button */}
+          {/* Reindex penyes button */}
           <div className="bg-white rounded-xl shadow-sm p-4">
-            <h3 className="text-sm font-bold text-[#1A1A2E] mb-2">Reindexar</h3>
+            <h3 className="text-sm font-bold text-[#1A1A2E] mb-2">Reindexar Penyes</h3>
             <p className="text-xs text-gray-500 mb-3">
-              Regenera todos los embeddings de las penyes enriquecidas en la base de datos vectorial.
+              Regenera los embeddings de las penyes enriquecidas.
             </p>
             <button
               onClick={handleReindex}
@@ -372,20 +449,55 @@ export default function PenyaChatPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Reindexing...
+                  Reindexing penyes...
                 </>
               ) : (
                 <>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Reindexar todo
+                  Reindexar penyes
                 </>
               )}
             </button>
             {reindexResult && (
               <div className={`mt-2 text-xs p-2 rounded ${reindexResult.startsWith("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
                 {reindexResult}
+              </div>
+            )}
+          </div>
+
+          {/* Reindex news button */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h3 className="text-sm font-bold text-[#1A1A2E] mb-2">Reindexar Noticias</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Indexa todas las noticias publicadas en la base de conocimiento vectorial.
+            </p>
+            <button
+              onClick={handleReindexNews}
+              disabled={reindexingNews}
+              className="w-full px-3 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 transition-all text-xs font-medium flex items-center justify-center gap-2"
+            >
+              {reindexingNews ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Indexando noticias...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                  </svg>
+                  Indexar noticias
+                </>
+              )}
+            </button>
+            {reindexNewsResult && (
+              <div className={`mt-2 text-xs p-2 rounded ${reindexNewsResult.startsWith("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+                {reindexNewsResult}
               </div>
             )}
           </div>
@@ -399,11 +511,19 @@ export default function PenyaChatPage() {
               Como funciona
             </h3>
             <div className="space-y-2 text-xs text-gray-500 leading-relaxed">
-              <p><strong className="text-gray-700">1. Enrichment:</strong> Al enriquecer una penya con IA, se buscan datos en Perplexity, Grok y se scrapea su web.</p>
-              <p><strong className="text-gray-700">2. Chunking:</strong> La informacion se divide en fragmentos: info basica, contacto, descripcion, contenido web, notas.</p>
-              <p><strong className="text-gray-700">3. Embeddings:</strong> Cada fragmento se convierte en un vector numerico (384 dim) usando Ollama + all-minilm.</p>
-              <p><strong className="text-gray-700">4. pgvector:</strong> Los vectores se almacenan en PostgreSQL con la extension pgvector para busqueda por similitud.</p>
-              <p><strong className="text-gray-700">5. Chat:</strong> Tu pregunta se convierte en vector, se buscan los fragmentos mas similares, y Claude genera la respuesta.</p>
+              <p><strong className="text-gray-700">1. Fuentes:</strong> Penyes (enrichment IA), noticias (cronicas, digests, previews de RSS, APIs y IA).</p>
+              <p><strong className="text-gray-700">2. Chunking:</strong> La info se divide en fragmentos: datos de penya, resumen de noticia, contenido EN/ES, fuentes.</p>
+              <p><strong className="text-gray-700">3. Embeddings:</strong> Cada fragmento se convierte en un vector (384 dim) con Ollama + all-minilm.</p>
+              <p><strong className="text-gray-700">4. Busqueda:</strong> Tu pregunta se vectoriza y se buscan los fragmentos mas similares en ambas tablas.</p>
+              <p><strong className="text-gray-700">5. Respuesta:</strong> Claude genera la respuesta con contexto de penyes y noticias relevantes.</p>
+            </div>
+            <div className="mt-3 pt-3 border-t flex gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Penya
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Noticia
+              </span>
             </div>
           </div>
         </div>

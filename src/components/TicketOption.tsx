@@ -18,7 +18,7 @@ export default function TicketOption({ label, priceFrom, currency, affiliateUrl,
         <a
           href={affiliateUrl}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="nofollow sponsored noopener noreferrer"
           className="btn-primary text-sm py-2 px-4"
           data-affiliate="ticket"
           data-provider={provider}

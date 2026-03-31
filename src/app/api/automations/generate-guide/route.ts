@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
+import { slugify } from "@/lib/slugify";
 
 async function getSettingKey(key: string): Promise<string> {
   try {
@@ -8,14 +9,6 @@ async function getSettingKey(key: string): Promise<string> {
     if (s?.value) return s.value;
   } catch { /* fallback */ }
   return process.env[key] || "";
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e").replace(/[íìï]/g, "i")
-    .replace(/[óòö]/g, "o").replace(/[úùü]/g, "u").replace(/ñ/g, "n")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
 const GUIDE_TOPICS = [

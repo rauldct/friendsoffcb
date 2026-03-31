@@ -14,6 +14,7 @@ export default function PhotoUploadForm() {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [consent, setConsent] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
 
@@ -50,7 +51,13 @@ export default function PhotoUploadForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !name.trim() || !email.trim()) return;
+    if (!file || !name.trim() || !email.trim() || !consent) {
+      if (!consent) {
+        setMessage(t('gallery.consentRequired'));
+        setStatus('error');
+      }
+      return;
+    }
 
     setStatus('uploading');
     setMessage('');
@@ -90,6 +97,7 @@ export default function PhotoUploadForm() {
         setPreview(null);
         setName('');
         setEmail('');
+        setConsent(false);
       }
     } catch {
       setStatus('error');
@@ -188,6 +196,22 @@ export default function PhotoUploadForm() {
         </div>
       </div>
 
+      {/* Consent checkbox */}
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#004D98] focus:ring-[#004D98]"
+        />
+        <span className="text-xs text-gray-600 leading-relaxed">
+          {t('gallery.consent')}{' '}
+          <a href="/gallery/terms" target="_blank" className="text-[#004D98] hover:underline">
+            Terms of Use
+          </a>
+        </span>
+      </label>
+
       {/* Status message */}
       {message && (
         <div className={`rounded-lg p-4 text-sm ${
@@ -202,7 +226,7 @@ export default function PhotoUploadForm() {
       {/* Submit */}
       <button
         type="submit"
-        disabled={!file || !name.trim() || !email.trim() || status === 'uploading'}
+        disabled={!file || !name.trim() || !email.trim() || !consent || status === 'uploading'}
         className="w-full rounded-lg bg-[#A50044] px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-[#8a003a] disabled:opacity-50"
       >
         {status === 'uploading' ? t('gallery.uploading') : t('gallery.upload')}

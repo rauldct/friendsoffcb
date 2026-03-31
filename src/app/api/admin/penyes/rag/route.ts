@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { reindexAllPenyes, getRAGStats, indexPenya } from "@/lib/rag";
+import { reindexAllPenyes, getRAGStats, indexPenya, indexAllNews } from "@/lib/rag";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 // GET - RAG stats
 export async function GET() {
@@ -14,7 +15,7 @@ export async function GET() {
   }
 }
 
-// POST - Reindex all or a single penya
+// POST - Reindex all penyes, a single penya, or all news
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -25,7 +26,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...result });
     }
 
-    // Reindex all
+    if (body.action === "reindex-news") {
+      // Index all news articles
+      const result = await indexAllNews();
+      return NextResponse.json({ success: true, ...result });
+    }
+
+    // Reindex all penyes
     const result = await reindexAllPenyes();
     return NextResponse.json({ success: true, ...result });
   } catch (err) {

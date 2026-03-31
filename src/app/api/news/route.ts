@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     where.OR = [
       { title: { contains: search.trim(), mode: "insensitive" } },
       { excerpt: { contains: search.trim(), mode: "insensitive" } },
+      { titleEs: { contains: search.trim(), mode: "insensitive" } },
+      { excerptEs: { contains: search.trim(), mode: "insensitive" } },
     ];
   }
 
@@ -32,7 +34,9 @@ export async function GET(request: NextRequest) {
         id: true,
         slug: true,
         title: true,
+        titleEs: true,
         excerpt: true,
+        excerptEs: true,
         coverImage: true,
         category: true,
         matchResult: true,

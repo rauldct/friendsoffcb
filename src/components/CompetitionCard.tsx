@@ -1,6 +1,9 @@
 'use client';
 
 import PredictionInfo from './PredictionInfo';
+import { ProbabilityBoxes, ProjectedPointsBars, ProgressRing, BracketView, type FixturePrediction } from './PredictionInfo';
+import { useLanguage } from '@/lib/LanguageContext';
+import { localized } from '@/lib/i18n';
 
 interface StandingRow {
   position: number;
@@ -45,9 +48,14 @@ interface CompetitionCardProps {
   standings: StandingRow[];
   nextMatches: MatchItem[];
   aiPrediction: string;
+  aiPredictionEs: string;
   aiExplanation: string;
+  aiExplanationEs: string;
   seasonForecast: string;
+  seasonForecastEs: string;
   seasonExplanation: string;
+  seasonExplanationEs: string;
+  aiStructuredData: Record<string, unknown>;
   updatedAt: string;
 }
 
@@ -80,11 +88,21 @@ export default function CompetitionCard({
   standings,
   nextMatches,
   aiPrediction,
+  aiPredictionEs,
   aiExplanation,
+  aiExplanationEs,
   seasonForecast,
+  seasonForecastEs,
   seasonExplanation,
+  seasonExplanationEs,
+  aiStructuredData,
   updatedAt,
 }: CompetitionCardProps) {
+  const { t, locale } = useLanguage();
+  const prediction = localized(locale, aiPrediction, aiPredictionEs);
+  const explanation = localized(locale, aiExplanation, aiExplanationEs);
+  const forecast = localized(locale, seasonForecast, seasonForecastEs);
+  const forecastExplanation = localized(locale, seasonExplanation, seasonExplanationEs);
   const colors = COMP_COLORS[id] || COMP_COLORS['la-liga'];
   const icon = COMP_ICONS[id] || '\u{1F3C6}';
   const gd = barcaGoalsFor - barcaGoalsAgainst;
@@ -101,7 +119,7 @@ export default function CompetitionCard({
             <span className="text-3xl">{icon}</span>
             <div>
               <h2 className="text-xl font-heading font-bold text-[#1A1A2E]">{name}</h2>
-              <p className="text-xs text-gray-500">Season {season}</p>
+              <p className="text-xs text-gray-500">{t("comp.season")} {season}</p>
             </div>
           </div>
           {barcaPosition > 0 && (
@@ -119,15 +137,15 @@ export default function CompetitionCard({
           <div className="grid grid-cols-4 gap-3 mt-4">
             <div className="bg-white/70 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-green-600">{barcaWon}</div>
-              <div className="text-[10px] text-gray-500 uppercase">Won</div>
+              <div className="text-[10px] text-gray-500 uppercase">{t("comp.won")}</div>
             </div>
             <div className="bg-white/70 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-yellow-600">{barcaDraw}</div>
-              <div className="text-[10px] text-gray-500 uppercase">Draw</div>
+              <div className="text-[10px] text-gray-500 uppercase">{t("comp.draw")}</div>
             </div>
             <div className="bg-white/70 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-red-600">{barcaLost}</div>
-              <div className="text-[10px] text-gray-500 uppercase">Lost</div>
+              <div className="text-[10px] text-gray-500 uppercase">{t("comp.lost")}</div>
             </div>
             <div className="bg-white/70 rounded-lg p-2 text-center">
               <div className={`text-lg font-bold ${gd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -143,13 +161,13 @@ export default function CompetitionCard({
         {/* Standings Table */}
         {standings.length > 0 && (
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Standings</h3>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t("comp.standings")}</h3>
             <div className="overflow-x-auto -mx-2">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-400 uppercase border-b">
                     <th className="text-left py-2 px-2 w-8">#</th>
-                    <th className="text-left py-2 px-2">Team</th>
+                    <th className="text-left py-2 px-2">{t("comp.team")}</th>
                     <th className="text-center py-2 px-1 w-8">PL</th>
                     <th className="text-center py-2 px-1 w-8">W</th>
                     <th className="text-center py-2 px-1 w-8">D</th>
@@ -206,7 +224,7 @@ export default function CompetitionCard({
         {/* Upcoming Matches */}
         {upcomingMatches.length > 0 && (
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Upcoming Matches</h3>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t("comp.upcomingMatches")}</h3>
             <div className="space-y-2">
               {upcomingMatches.map((m) => (
                 <div key={m.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
@@ -217,7 +235,7 @@ export default function CompetitionCard({
                     </span>
                   </div>
                   <div className="text-xs text-gray-400 px-3">
-                    {new Date(m.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(m.date).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { month: 'short', day: 'numeric' })}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-medium ${!m.isHome ? 'text-[#A50044]' : 'text-gray-700'}`}>
@@ -234,7 +252,7 @@ export default function CompetitionCard({
         {/* Recent Results */}
         {recentResults.length > 0 && (
           <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Recent Results</h3>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{t("comp.recentResults")}</h3>
             <div className="space-y-2">
               {recentResults.map((m) => {
                 const barcaGoals = m.isHome ? m.homeGoals : m.awayGoals;
@@ -255,7 +273,7 @@ export default function CompetitionCard({
                         {m.homeGoals} - {m.awayGoals}
                       </div>
                       <div className="text-[10px] text-gray-400">
-                        {new Date(m.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {new Date(m.date).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { month: 'short', day: 'numeric' })}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -272,39 +290,83 @@ export default function CompetitionCard({
         )}
 
         {/* AI Predictions */}
-        {(aiPrediction || seasonForecast) && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
-              <span className="text-base">&#129302;</span> AI Predictions
-            </h3>
+        {(prediction || forecast) && (() => {
+          const winPct = Number(aiStructuredData?.nextMatchWinPct) || 0;
+          const drawPct = Number(aiStructuredData?.nextMatchDrawPct) || 0;
+          const lossPct = Number(aiStructuredData?.nextMatchLossPct) || 0;
+          const titlePct = Number(aiStructuredData?.titlePct) || 0;
+          const top4Pct = Number(aiStructuredData?.top4Pct) || 0;
+          const projectedPoints = (Array.isArray(aiStructuredData?.projectedPoints) ? aiStructuredData.projectedPoints : []) as Array<{ team: string; projected: number }>;
+          const allFixtures = (Array.isArray(aiStructuredData?.allFixtures) ? aiStructuredData.allFixtures : []) as FixturePrediction[];
+          const bracketRounds = (Array.isArray(aiStructuredData?.bracketRounds) ? aiStructuredData.bracketRounds : []) as Array<{ round: string; opponent: string; winPct: number; reason: string }>;
+          const hasMatchProbs = winPct + drawPct + lossPct > 0;
+          const isLaLiga = id === 'la-liga';
 
-            {aiPrediction && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
-                <div className="text-xs font-medium text-blue-500 uppercase mb-2">Next Match</div>
-                <PredictionInfo
-                  title={`${name} - Next Match Analysis`}
-                  prediction={aiPrediction}
-                  explanation={aiExplanation}
-                />
-              </div>
-            )}
+          return (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                <span className="text-base">&#129302;</span> {t("comp.aiPredictions")}
+              </h3>
 
-            {seasonForecast && (
-              <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4">
-                <div className="text-xs font-medium text-purple-500 uppercase mb-2">Season Forecast</div>
-                <PredictionInfo
-                  title={`${name} - Season Forecast`}
-                  prediction={seasonForecast}
-                  explanation={seasonExplanation}
-                />
-              </div>
-            )}
-          </div>
-        )}
+              {/* Next Match Prediction */}
+              {prediction && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 space-y-4">
+                  <div className="text-xs font-medium text-blue-500 uppercase mb-1">{t("comp.nextMatch")}</div>
+                  <PredictionInfo
+                    title={`${name} - ${t("comp.nextMatch")}`}
+                    prediction={prediction}
+                    explanation={explanation}
+                  />
+                  {/* Probability boxes directly in card */}
+                  {hasMatchProbs && (
+                    <ProbabilityBoxes winPct={winPct} drawPct={drawPct} lossPct={lossPct} t={t} />
+                  )}
+                </div>
+              )}
+
+              {/* Season Forecast */}
+              {forecast && (
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 space-y-4">
+                  <div className="text-xs font-medium text-purple-500 uppercase mb-1">{t("comp.seasonForecast")}</div>
+                  <PredictionInfo
+                    title={`${name} - ${t("comp.seasonForecast")}`}
+                    prediction={forecast}
+                    explanation={forecastExplanation}
+                  />
+
+                  {/* Projected Points Bars (La Liga) */}
+                  {isLaLiga && projectedPoints.length > 0 && (
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-500 mb-3">{t("comp.projectedPts")}</h5>
+                      <ProjectedPointsBars projectedPoints={projectedPoints} standings={standings} allFixtures={allFixtures} t={t} />
+                    </div>
+                  )}
+
+                  {/* Ring Charts */}
+                  {(titlePct > 0 || top4Pct > 0) && (
+                    <div className="flex items-center justify-center gap-8 pt-2">
+                      {titlePct > 0 && (
+                        <ProgressRing percentage={titlePct} label={t("comp.titleChance")} />
+                      )}
+                      {top4Pct > 0 && (
+                        <ProgressRing percentage={top4Pct} label={t("comp.advanceChance")} />
+                      )}
+                    </div>
+                  )}
+
+                  {/* CL/Copa: Bracket path with round-by-round probabilities */}
+                  {!isLaLiga && bracketRounds.length > 0 && (
+                    <BracketView bracketRounds={bracketRounds} t={t} />
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Updated at */}
         <div className="text-xs text-gray-400 text-right">
-          Updated: {new Date(updatedAt).toLocaleString('en-US', {
+          {t("comp.updated")} {new Date(updatedAt).toLocaleString(locale === "es" ? "es-ES" : "en-US", {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

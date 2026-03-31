@@ -16,8 +16,8 @@ const config: Config = {
         light: "#F5F5F5",
       },
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
-        heading: ["Montserrat", "sans-serif"],
+        sans: ["var(--font-inter)", "Inter", "sans-serif"],
+        heading: ["var(--font-montserrat)", "Montserrat", "sans-serif"],
       },
     },
   },

@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { Resend } from "resend";
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import { addApiAlert, clearApiAlert } from "@/lib/api-alerts";
 
 // ============== CONFIG ==============
 
@@ -120,12 +121,16 @@ export function renderEmailTemplate({
   unsubscribeUrl,
   trackingPixelUrl,
   lang = "en",
+  newsCardsHtml,
+  packageBannerHtml,
 }: {
   subject: string;
   htmlContent: string;
   unsubscribeUrl?: string;
   trackingPixelUrl?: string;
   lang?: string;
+  newsCardsHtml?: string;
+  packageBannerHtml?: string;
 }): string {
   const subtitle = lang === "es"
     ? "Tu gu&iacute;a de viajes y experiencias del FC Barcelona"
@@ -143,20 +148,44 @@ export function renderEmailTemplate({
   <title>${escapeHtml(subject)}</title>
   <style>
     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5; }
-    .wrapper { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-    .header { background: linear-gradient(135deg, #1A1A2E 0%, #004D98 100%); padding: 32px 24px; text-align: center; }
-    .header h1 { color: #EDBB00; font-size: 24px; margin: 0; font-weight: 700; }
-    .header p { color: rgba(255,255,255,0.8); font-size: 14px; margin: 8px 0 0; }
-    .content { padding: 32px 24px; color: #1A1A2E; font-size: 16px; line-height: 1.6; }
-    .content h2 { color: #004D98; margin-top: 24px; }
-    .content h3 { color: #A50044; margin-top: 20px; }
+    .wrapper { max-width: 640px; margin: 0 auto; background-color: #ffffff; border-radius: 0 0 12px 12px; }
+    .header { background: linear-gradient(135deg, #1A1A2E 0%, #004D98 50%, #1A1A2E 100%); padding: 36px 24px 28px; text-align: center; }
+    .header h1 { color: #EDBB00; font-size: 26px; margin: 0; font-weight: 800; letter-spacing: 0.5px; }
+    .header p { color: rgba(255,255,255,0.75); font-size: 13px; margin: 10px 0 0; letter-spacing: 0.3px; }
+    .content { padding: 28px 24px; color: #1A1A2E; font-size: 15px; line-height: 1.65; }
+    .content h2 { color: #004D98; font-size: 20px; margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #EDBB00; }
+    .content h3 { color: #A50044; font-size: 16px; margin-top: 18px; }
     .content a { color: #004D98; }
-    .content img { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; }
-    .article-card { border-left: 3px solid #004D98; padding: 12px 16px; margin: 16px 0; background-color: #f8f9fa; }
-    .article-card h3 { margin: 0 0 8px; color: #1A1A2E; font-size: 16px; }
-    .article-card p { margin: 0; font-size: 14px; color: #4a5568; }
-    .article-card a { color: #004D98; font-size: 13px; font-weight: 600; }
-    .footer { background-color: #1A1A2E; padding: 24px; text-align: center; }
+    .content p { margin: 0 0 14px; }
+    .content img { max-width: 100%; height: auto; border-radius: 8px; margin: 16px 0; }
+    .section-badge { display: inline-block; background: #004D98; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .highlight-box { background: linear-gradient(135deg, #f0f4ff 0%, #fdf6e3 100%); border-left: 4px solid #EDBB00; border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+    .highlight-box strong { color: #A50044; }
+    .result-badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-right: 6px; }
+    .result-w { background: #dcfce7; color: #166534; }
+    .result-d { background: #fef9c3; color: #854d0e; }
+    .result-l { background: #fee2e2; color: #991b1b; }
+    .form-row { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 14px; border-bottom: 1px solid #f1f1f1; }
+    .form-row:last-child { border-bottom: none; }
+    .form-label { min-width: 100px; color: #6b7280; font-size: 12px; text-transform: uppercase; }
+    .form-value { color: #1A1A2E; font-weight: 600; }
+    .article-card { border-left: 3px solid #004D98; padding: 12px 16px; margin: 14px 0; background-color: #f8f9fa; border-radius: 0 6px 6px 0; }
+    .article-card h3 { margin: 0 0 6px; color: #1A1A2E; font-size: 15px; }
+    .article-card p { margin: 0; font-size: 13px; color: #4a5568; line-height: 1.5; }
+    .article-card a { color: #004D98; font-size: 12px; font-weight: 600; }
+    .news-grid { margin: 20px 0; }
+    .news-item { margin-bottom: 16px; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .news-item img { width: 100%; height: 160px; object-fit: cover; display: block; }
+    .news-item-body { padding: 12px 14px; }
+    .news-item-body h3 { margin: 0 0 4px; font-size: 14px; color: #1A1A2E; }
+    .news-item-body p { margin: 0 0 6px; font-size: 12px; color: #4a5568; line-height: 1.5; }
+    .news-item-body a { color: #004D98; font-size: 12px; font-weight: 600; text-decoration: none; }
+    .package-banner { background: linear-gradient(135deg, #004D98 0%, #1A1A2E 100%); border-radius: 10px; padding: 20px; margin: 24px 0; text-align: center; }
+    .package-banner h3 { color: #EDBB00; margin: 0 0 6px; font-size: 17px; }
+    .package-banner p { color: rgba(255,255,255,0.85); margin: 0 0 12px; font-size: 13px; }
+    .package-banner img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; }
+    .package-banner a { display: inline-block; background-color: #EDBB00; color: #1A1A2E !important; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 14px; }
+    .footer { background-color: #1A1A2E; padding: 24px; text-align: center; border-radius: 0 0 12px 12px; }
     .footer p { color: rgba(255,255,255,0.6); font-size: 12px; margin: 4px 0; }
     .footer a { color: #EDBB00; text-decoration: none; }
     .divider { height: 3px; background: linear-gradient(90deg, #A50044, #004D98, #EDBB00); }
@@ -172,6 +201,8 @@ export function renderEmailTemplate({
     <div class="divider"></div>
     <div class="content">
       ${htmlContent}
+      ${newsCardsHtml || ""}
+      ${packageBannerHtml || ""}
     </div>
     <div class="divider"></div>
     <div class="footer">
@@ -265,10 +296,12 @@ export async function sendNewsletter(newsletterId: string): Promise<{ success: b
         },
       });
       sentCount++;
+      if (sentCount === 1) await clearApiAlert("resend");
     } catch (err) {
       failedCount++;
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${sub.email}: ${msg}`);
+      if (failedCount === 1) await addApiAlert("resend", msg, undefined, "newsletter send");
     }
 
     if (sentCount + failedCount < subscribers.length) {
@@ -352,6 +385,79 @@ export async function sendLatestDigestAsNewsletter(): Promise<{ success: boolean
   }
 
   return sendDigestAsNewsletter(latestDigest.id);
+}
+
+// ============== WELCOME EMAIL ==============
+
+export async function sendWelcomeEmail(subscriberId: string): Promise<void> {
+  const apiKey = await getResendApiKey();
+  if (!apiKey) return;
+
+  const subscriber = await prisma.subscriber.findUnique({ where: { id: subscriberId } });
+  if (!subscriber) return;
+
+  const resend = new Resend(apiKey);
+  const lang = subscriber.language || "en";
+  const isEs = lang === "es";
+  const token = generateUnsubscribeToken(subscriber.id);
+  const unsubscribeUrl = `${SITE_URL}/api/newsletter/unsubscribe?id=${subscriber.id}&token=${token}`;
+
+  const subject = isEs
+    ? "Bienvenido a Friends of Barça"
+    : "Welcome to Friends of Barça";
+
+  const htmlContent = isEs
+    ? `<h2>Bienvenido a Friends of Bar&ccedil;a</h2>
+<p>Gracias por unirte a nuestra comunidad de fans del FC Barcelona.</p>
+<img src="${SITE_URL}/images/packages/camp-nou-aerial.jpg" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
+<p>Esto es lo que recibir&aacute;s:</p>
+<ul>
+  <li><strong>Newsletter semanal</strong> con res&uacute;menes de partidos, noticias y an&aacute;lisis</li>
+  <li><strong>Paquetes de partido</strong> con entradas, hoteles y actividades en Barcelona</li>
+  <li><strong>Predicciones IA</strong> para La Liga, Champions League y Copa del Rey</li>
+</ul>
+<p>Mientras tanto, explora nuestro contenido:</p>
+<p><a href="${SITE_URL}/news">Noticias</a> &bull; <a href="${SITE_URL}/competitions">Competiciones</a> &bull; <a href="${SITE_URL}/packages">Paquetes de partido</a> &bull; <a href="${SITE_URL}/guides">Gu&iacute;as de viaje</a></p>
+<p style="text-align:center;margin-top:24px;">
+  <a href="${SITE_URL}/packages" class="cta-button">Ver Paquetes de Partido</a>
+</p>`
+    : `<h2>Welcome to Friends of Bar&ccedil;a</h2>
+<p>Thanks for joining our community of FC Barcelona fans!</p>
+<img src="${SITE_URL}/images/packages/camp-nou-aerial.jpg" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
+<p>Here's what you'll receive:</p>
+<ul>
+  <li><strong>Weekly newsletter</strong> with match recaps, news highlights, and analysis</li>
+  <li><strong>Match packages</strong> featuring tickets, hotels, and activities in Barcelona</li>
+  <li><strong>AI predictions</strong> for La Liga, Champions League, and Copa del Rey</li>
+</ul>
+<p>In the meantime, explore our content:</p>
+<p><a href="${SITE_URL}/news">News</a> &bull; <a href="${SITE_URL}/competitions">Competitions</a> &bull; <a href="${SITE_URL}/packages">Match Packages</a> &bull; <a href="${SITE_URL}/guides">Travel Guides</a></p>
+<p style="text-align:center;margin-top:24px;">
+  <a href="${SITE_URL}/packages" class="cta-button">View Match Packages</a>
+</p>`;
+
+  const html = renderEmailTemplate({
+    subject,
+    htmlContent,
+    unsubscribeUrl,
+    lang,
+  });
+
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: subscriber.email,
+      subject,
+      html,
+      headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
+    });
+    console.log(`[Welcome] Sent welcome email to ${subscriber.email}`);
+    await clearApiAlert("resend");
+  } catch (err) {
+    console.error(`[Welcome] Failed to send to ${subscriber.email}:`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    await addApiAlert("resend", msg, undefined, "welcome email").catch(() => {});
+  }
 }
 
 // ============== FOOTBALL-DATA.ORG HELPERS ==============
@@ -479,6 +585,87 @@ async function fetchOpponentInfo(opponentName: string): Promise<{ lastMatch: Opp
   }
 }
 
+// ============== NEWS CARDS + PACKAGE BANNER HELPERS ==============
+
+interface NewsCardArticle {
+  title: string;
+  slug: string;
+  excerpt: string;
+  coverImage: string | null;
+  category: string;
+  publishedAt: Date | null;
+}
+
+function buildNewsCardsHtml(articles: NewsCardArticle[], lang: "en" | "es"): string {
+  if (articles.length === 0) return "";
+  const heading = lang === "es" ? "Noticias de la Semana" : "This Week's News";
+  const readMore = lang === "es" ? "Leer m&aacute;s" : "Read more";
+
+  const cards = articles.map((a) => {
+    const imgUrl = a.coverImage
+      ? (a.coverImage.startsWith("http") ? a.coverImage : `${SITE_URL}${a.coverImage}`)
+      : `${SITE_URL}/images/packages/camp-nou-match.jpg`;
+    const articleUrl = `${SITE_URL}/news/${a.slug}`;
+    const catLabel = a.category === "chronicle"
+      ? (lang === "es" ? "Cr&oacute;nica" : "Match Report")
+      : a.category === "preview"
+      ? (lang === "es" ? "Previa" : "Preview")
+      : (lang === "es" ? "Noticias" : "News");
+    const pubDate = a.publishedAt
+      ? new Date(a.publishedAt).toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { month: "short", day: "numeric" })
+      : "";
+    return `<div class="news-item">
+      <img src="${imgUrl}" alt="${escapeHtml(a.title)}" />
+      <div class="news-item-body">
+        <p style="margin:0 0 4px;font-size:11px;color:#004D98;font-weight:600;text-transform:uppercase;">${catLabel} &bull; ${pubDate}</p>
+        <h3>${escapeHtml(a.title)}</h3>
+        <p>${escapeHtml(a.excerpt.slice(0, 150))}${a.excerpt.length > 150 ? "..." : ""}</p>
+        <a href="${articleUrl}">${readMore} &rarr;</a>
+      </div>
+    </div>`;
+  }).join("\n");
+
+  return `
+    <h2 style="margin-top:32px;border-bottom:2px solid #EDBB00;padding-bottom:8px;">${heading}</h2>
+    <div class="news-grid">${cards}</div>
+  `;
+}
+
+interface PackageForBanner {
+  matchTitle: string;
+  slug: string;
+  description: string;
+  heroImage: string | null;
+  competition: string;
+  matchDate: Date;
+  opponent: string;
+}
+
+function buildPackageBannerHtml(pkg: PackageForBanner, lang: "en" | "es"): string {
+  const imgUrl = pkg.heroImage
+    ? (pkg.heroImage.startsWith("http") ? pkg.heroImage : `${SITE_URL}${pkg.heroImage}`)
+    : `${SITE_URL}/images/packages/camp-nou-aerial.jpg`;
+  const packageUrl = `${SITE_URL}/packages/${pkg.slug}`;
+  const matchDate = new Date(pkg.matchDate).toLocaleDateString(
+    lang === "es" ? "es-ES" : "en-US",
+    { weekday: "long", month: "long", day: "numeric" }
+  );
+  const heading = lang === "es" ? "Paquete Recomendado" : "Recommended Package";
+  const cta = lang === "es" ? "Ver Paquete Completo" : "View Full Package";
+  const desc = pkg.description.slice(0, 120) + (pkg.description.length > 120 ? "..." : "");
+
+  return `
+    <div class="package-banner">
+      <img src="${imgUrl}" alt="${escapeHtml(pkg.matchTitle)}" />
+      <p style="color:#EDBB00;font-size:11px;text-transform:uppercase;margin:0 0 4px;letter-spacing:1px;">${heading}</p>
+      <h3>${escapeHtml(pkg.matchTitle)}</h3>
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);margin:0 0 4px;">${pkg.competition} &bull; ${matchDate}</p>
+      <p>${escapeHtml(desc)}</p>
+      <a href="${packageUrl}">${cta} &rarr;</a>
+    </div>
+  `;
+}
+
 // ============== WEEKLY NEWSLETTER (100% AUTO - BILINGUAL + PHOTOS) ==============
 
 export async function generateAndSendWeeklyNewsletter(): Promise<{ success: boolean; message: string }> {
@@ -595,7 +782,7 @@ IMAGES TO INCLUDE (use these exact URLs as <img> src):
 - Barcelona city image (place in Week in Review or as a visual break): ${images.city}
 
 Use this format for images:
-<img src="URL" alt="descriptive alt text" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" />`;
+<img src="URL" alt="descriptive alt text" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />`;
 
       const sharedContext = `
 == SECTION 1: MATCH RECAP ==
@@ -618,41 +805,56 @@ ${digestsContext}`;
 
       const response = await client.messages.create({
         model: "claude-sonnet-4-5-20250929",
-        max_tokens: 6000,
+        max_tokens: 4000,
         messages: [
           {
             role: "user",
-            content: `You are a sports journalist writing the weekly newsletter for FriendsOfBarca.com, a fan site for FC Barcelona.
+            content: `You are the editor of the weekly newsletter for FriendsOfBarca.com. Write a CONCISE, visual, magazine-style newsletter.
 
-Generate the newsletter in BOTH English and Spanish. Return a JSON object with two keys: "en" (English HTML) and "es" (Spanish HTML).
+Generate in BOTH English and Spanish. Return JSON: {"en": "...", "es": "..."}
 
-Each version should have 4 sections (600-800 words per language). Be professional but passionate, like a quality football magazine. Only include sections for which data is available.
+STRICT RULES:
+- MAX 400 words per language (NOT 600-800, keep it SHORT and punchy)
+- Each section: 2-3 SHORT paragraphs max (3-4 sentences each)
+- NO walls of text. Readers scan, they don't read essays
+- Use highlights boxes for key facts: <div class="highlight-box"><strong>Key stat:</strong> text</div>
+- Use result badges for form: <span class="result-badge result-w">W</span> or result-d or result-l
+- Use section badges before h2: <span class="section-badge">Match Recap</span> then <h2>Title</h2>
+
+ONLY include sections for which data is available. Skip empty sections entirely.
 
 ${sharedContext}
 
 ${imageInstructions}
 
-FORMATTING RULES (apply to BOTH versions):
-- Use <h2> for section titles (EN: "Match Recap", "Next Match Preview", "Opponent Watch", "Week in Review" / ES: "Resumen de Partidos", "Próximo Partido", "Análisis del Rival", "Resumen Semanal")
-- Use <p> tags for paragraphs
-- Use <strong> for emphasis
-- Use <em> for secondary info
-- You can use <ul><li> for lists
-- Include a brief intro paragraph before the sections
-- End with a short sign-off paragraph
-- Link to ${SITE_URL}/news for "Read more" and ${SITE_URL}/calendar for match details
-- Do NOT wrap in <html>, <body>, or <style> tags — only the inner content HTML
-- Include ALL 3 images in both versions at appropriate places
+SECTION STRUCTURE (EN titles / ES titles):
+1. Brief intro (2-3 sentences setting the week's mood)
+2. <span class="section-badge">Match Recap</span> / "Resumen" - Key results with scores highlighted. Use highlight-box for the big takeaway.
+3. <span class="section-badge">Next Match</span> / "Próximo Partido" - Opposition, date, what to watch. Include a highlight-box with match details (opponent, date, time, venue).
+4. <span class="section-badge">Week in Review</span> / "Resumen Semanal" - 3-5 bullet points of top stories. Not paragraphs, use <ul><li> with <strong>headline:</strong> one-line summary.
+5. Short sign-off (1-2 sentences)
 
-Respond ONLY with the raw JSON object (no markdown code blocks):
-{"en": "<h2>...</h2>...", "es": "<h2>...</h2>..."}`,
+FORMATTING:
+- <h2> for section titles, <p> for paragraphs, <strong> for emphasis
+- Links: ${SITE_URL}/news for "Read more", ${SITE_URL}/calendar for match details
+- Do NOT wrap in <html>/<body>/<style> tags
+- Include ALL 3 images at appropriate places
+- Keep it SCANNABLE: headers, bullets, highlight boxes, badges
+
+Respond ONLY with raw JSON (no markdown code blocks):
+{"en": "...", "es": "..."}`,
           },
         ],
       });
 
       let responseText = response.content[0].type === "text" ? response.content[0].text : "";
       // Strip markdown code blocks if Claude wraps them
-      responseText = responseText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (codeBlockMatch) {
+        responseText = codeBlockMatch[1].trim();
+      } else {
+        responseText = responseText.trim();
+      }
 
       let parsed: { en: string; es: string };
       try {
@@ -739,7 +941,52 @@ Respond ONLY with the raw JSON object (no markdown code blocks):
     return { success: false, message: "No content available for weekly newsletter" };
   }
 
-  // 10. Create newsletter and send
+  // 10. Fetch recent news articles with cover images for news cards
+  const recentNews = await prisma.newsArticle.findMany({
+    where: {
+      status: "published",
+      publishedAt: { gte: weekAgo },
+    },
+    select: {
+      title: true,
+      slug: true,
+      excerpt: true,
+      coverImage: true,
+      category: true,
+      publishedAt: true,
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 6,
+  });
+
+  const newsCardsEn = buildNewsCardsHtml(recentNews as NewsCardArticle[], "en");
+  const newsCardsEs = buildNewsCardsHtml(recentNews as NewsCardArticle[], "es");
+
+  // 11. Fetch next upcoming package for banner recommendation
+  const nextPackage = await prisma.matchPackage.findFirst({
+    where: { matchDate: { gte: now } },
+    select: {
+      matchTitle: true,
+      slug: true,
+      description: true,
+      heroImage: true,
+      competition: true,
+      matchDate: true,
+      opponent: true,
+    },
+    orderBy: { matchDate: "asc" },
+  });
+
+  const packageBannerEn = nextPackage ? buildPackageBannerHtml(nextPackage as PackageForBanner, "en") : "";
+  const packageBannerEs = nextPackage ? buildPackageBannerHtml(nextPackage as PackageForBanner, "es") : "";
+
+  // 12. Append news cards + package banner to the content
+  htmlContent += newsCardsEn + packageBannerEn;
+  if (htmlContentEs) {
+    htmlContentEs += newsCardsEs + packageBannerEs;
+  }
+
+  // 13. Create newsletter and send
   const newsletter = await prisma.newsletter.create({
     data: {
       subject,
@@ -751,7 +998,7 @@ Respond ONLY with the raw JSON object (no markdown code blocks):
     },
   });
 
-  console.log(`[Weekly Newsletter] Created newsletter "${subject}"`);
+  console.log(`[Weekly Newsletter] Created newsletter "${subject}" (${recentNews.length} news cards, package: ${nextPackage ? nextPackage.matchTitle : "none"})`);
 
   return sendNewsletter(newsletter.id);
 }
@@ -767,9 +1014,9 @@ function buildFallbackNewsletter(
 
   if (allArticles.length === 0) {
     return {
-      htmlContent: `<img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" /><h2>This Week in Bar&ccedil;a</h2><p>Stay tuned for next week's roundup!</p>`,
+      htmlContent: `<img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" /><h2>This Week in Bar&ccedil;a</h2><p>Stay tuned for next week's roundup!</p>`,
       textContent: "This Week in Barça\nStay tuned for next week's roundup!",
-      htmlContentEs: `<img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" /><h2>Esta Semana en el Bar&ccedil;a</h2><p>&iexcl;Mantente atento al resumen de la pr&oacute;xima semana!</p>`,
+      htmlContentEs: `<img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" /><h2>Esta Semana en el Bar&ccedil;a</h2><p>&iexcl;Mantente atento al resumen de la pr&oacute;xima semana!</p>`,
       textContentEs: "Esta Semana en el Barça\nMantente atento al resumen de la próxima semana!",
     };
   }
@@ -800,22 +1047,22 @@ function buildFallbackNewsletter(
   const esIntro = `Aqu&iacute; tienes tu resumen semanal de noticias y cr&oacute;nicas del FC Barcelona del ${dateRange}.`;
 
   const htmlContent = `
-    <img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" />
+    <img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
     <h2>${enTitle}</h2>
     <p>${enIntro}</p>
     ${buildCards("en")}
-    <img src="${images.city}" alt="Barcelona" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" />
+    <img src="${images.city}" alt="Barcelona" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
     <p style="text-align: center; margin-top: 24px;">
       <a href="${SITE_URL}/news" class="cta-button">Read All News</a>
     </p>
   `;
 
   const htmlContentEs = `
-    <img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" />
+    <img src="${images.hero}" alt="Camp Nou" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
     <h2>${esTitle}</h2>
     <p>${esIntro}</p>
     ${buildCards("es")}
-    <img src="${images.city}" alt="Barcelona" style="width:100%;max-width:560px;height:auto;border-radius:8px;margin:12px 0;" />
+    <img src="${images.city}" alt="Barcelona" style="width:100%;max-width:660px;height:auto;border-radius:8px;margin:12px 0;" />
     <p style="text-align: center; margin-top: 24px;">
       <a href="${SITE_URL}/news" class="cta-button">Leer Todas las Noticias</a>
     </p>

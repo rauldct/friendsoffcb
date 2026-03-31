@@ -23,8 +23,14 @@ export default async function GoogleAnalytics() {
         {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
+          gtag('consent', 'default', {
+            analytics_storage: localStorage.getItem('cookie_consent') === 'accepted' ? 'granted' : 'denied',
+          });
           gtag('js', new Date());
           gtag('config', '${gaId}');
+          window.addEventListener('cookie_consent_accepted', function() {
+            gtag('consent', 'update', { analytics_storage: 'granted' });
+          });
         `}
       </Script>
     </>

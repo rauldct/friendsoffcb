@@ -41,6 +41,27 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const { id, password } = await request.json();
+
+    if (!id || !password) {
+      return NextResponse.json({ error: "User ID and new password required" }, { status: 400 });
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    }
+
+    const hash = await hashPassword(password);
+    await prisma.adminUser.update({ where: { id }, data: { password: hash } });
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const { id } = await request.json();

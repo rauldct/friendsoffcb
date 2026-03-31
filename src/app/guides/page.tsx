@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import PostCard from "@/components/PostCard";
+import PageHeader from "@/components/PageHeader";
+import EmptyState from "@/components/EmptyState";
 import prisma from "@/lib/prisma";
+import { collectionPageJsonLd } from "@/lib/jsonld";
 
 export const metadata: Metadata = {
   title: "Travel Guides",
@@ -17,6 +20,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "https://friendsofbarca.com/guides",
+    languages: { "en": "https://friendsofbarca.com/guides", "es": "https://friendsofbarca.com/es/guides", "x-default": "https://friendsofbarca.com/guides" },
   },
 };
 
@@ -34,19 +38,21 @@ export default async function GuidesPage() {
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  const jsonLd = collectionPageJsonLd({
+    name: "Barcelona Travel Guides for Barça Fans",
+    description: "Complete travel guides for FC Barcelona fans visiting Barcelona and Camp Nou.",
+    url: "https://friendsofbarca.com/guides",
+    items: guides.map(g => ({ name: g.title, url: `https://friendsofbarca.com/guides/${g.slug}` })),
+  });
+
   return (
+    <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     <div className="section-padding">
       <div className="container-custom">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-heading font-extrabold text-[#1A1A2E] mb-4">Travel Guides</h1>
-          <p className="text-gray-500 max-w-2xl mx-auto">Everything you need to know before visiting the Spotify Camp Nou. Written by locals, for fans.</p>
-        </div>
+        <PageHeader titleKey="guides.title" descKey="guides.desc" />
         {serialized.length === 0 ? (
-          <div className="text-center py-20">
-            <span className="text-6xl mb-4 block">📚</span>
-            <h2 className="text-2xl font-heading font-bold text-[#1A1A2E] mb-2">Guides Coming Soon</h2>
-            <p className="text-gray-500">We&apos;re writing comprehensive guides for your Camp Nou visit.</p>
-          </div>
+          <EmptyState icon="📚" titleKey="guides.empty" descKey="guides.emptyDesc" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {serialized.map(guide => <PostCard key={guide.id} post={guide} />)}
@@ -54,5 +60,6 @@ export default async function GuidesPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useLanguage, useLocalePath } from '@/lib/LanguageContext';
+import { localized } from '@/lib/i18n';
 
 interface NewsArticle {
   id: string;
   slug: string;
   title: string;
+  titleEs?: string | null;
   excerpt: string;
+  excerptEs?: string | null;
   coverImage: string;
   category: string;
   matchResult: string | null;
@@ -15,6 +19,8 @@ interface NewsArticle {
 }
 
 export default function NewsExplorer() {
+  const { t, locale } = useLanguage();
+  const lp = useLocalePath();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -56,9 +62,9 @@ export default function NewsExplorer() {
   }, [searchInput]);
 
   const tabs = [
-    { label: 'All', value: '' },
-    { label: 'Match Reports', value: 'chronicle' },
-    { label: 'Digests', value: 'digest' },
+    { label: t("news.all"), value: '' },
+    { label: t("news.matchReports"), value: 'chronicle' },
+    { label: t("news.digests"), value: 'digest' },
   ];
 
   return (
@@ -68,7 +74,7 @@ export default function NewsExplorer() {
         <div className="relative flex-1">
           <input
             type="text"
-            placeholder="Search news..."
+            placeholder={t("news.searchPlaceholder")}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pl-10 text-sm focus:border-[#004D98] focus:ring-1 focus:ring-[#004D98] focus:outline-none"
@@ -96,8 +102,8 @@ export default function NewsExplorer() {
 
       {/* Results count */}
       <p className="text-sm text-gray-500 mb-4">
-        {total} article{total !== 1 ? 's' : ''} found
-        {search && <span> for &ldquo;{search}&rdquo;</span>}
+        {total} {total !== 1 ? t("news.articlesFound") : t("news.articleFound")}
+        {search && <span> {t("news.for")} &ldquo;{search}&rdquo;</span>}
       </p>
 
       {/* Loading */}
@@ -117,15 +123,15 @@ export default function NewsExplorer() {
       ) : articles.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 rounded-2xl">
           <div className="text-5xl mb-4">&#128270;</div>
-          <h3 className="text-lg font-heading font-bold text-[#1A1A2E] mb-2">No articles found</h3>
-          <p className="text-gray-500 text-sm">Try a different search term or category.</p>
+          <h3 className="text-lg font-heading font-bold text-[#1A1A2E] mb-2">{t("news.noArticles")}</h3>
+          <p className="text-gray-500 text-sm">{t("news.tryDifferent")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {articles.map((article) => (
             <Link
               key={article.id}
-              href={`/news/${article.slug}`}
+              href={lp(`/news/${article.slug}`)}
               className="group bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow"
             >
               {article.coverImage ? (
@@ -153,21 +159,26 @@ export default function NewsExplorer() {
                         : 'bg-blue-50 text-blue-700'
                     }`}
                   >
-                    {article.category === 'chronicle' ? 'Match Report' : 'News Digest'}
+                    {article.category === 'chronicle' ? t("news.matchReport") : t("news.newsDigest")}
                   </span>
                   {article.matchResult && (
                     <span className="text-sm font-bold text-[#1A1A2E]">{article.matchResult}</span>
                   )}
                 </div>
                 <h3 className="font-heading font-bold text-[#1A1A2E] mb-2 group-hover:text-[#A50044] transition-colors line-clamp-2">
-                  {article.title}
+                  {localized(locale, article.title, article.titleEs)}
                 </h3>
-                <p className="text-sm text-gray-500 line-clamp-2 mb-3">{article.excerpt}</p>
+                <p className="text-sm text-gray-500 line-clamp-2 mb-3">{localized(locale, article.excerpt, article.excerptEs)}</p>
                 <time className="text-xs text-gray-400">
-                  {new Date(article.publishedAt).toLocaleDateString('en-US', {
+                  {new Date(article.publishedAt).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
+                  })}
+                  {", "}
+                  {new Date(article.publishedAt).toLocaleTimeString(locale === "es" ? "es-ES" : "en-US", {
+                    hour: '2-digit',
+                    minute: '2-digit',
                   })}
                 </time>
               </div>
@@ -184,17 +195,17 @@ export default function NewsExplorer() {
             disabled={page === 1}
             className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors"
           >
-            Previous
+            {t("news.previous")}
           </button>
           <span className="text-sm text-gray-600">
-            Page {page} of {totalPages}
+            {t("news.page")} {page} {t("news.of")} {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors"
           >
-            Next
+            {t("news.next")}
           </button>
         </div>
       )}

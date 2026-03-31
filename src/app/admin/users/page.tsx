@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useMemo, FormEvent } from "react";
 
 interface AdminUser {
   id: string;
@@ -18,6 +18,10 @@ export default function AdminUsersPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [changingPwFor, setChangingPwFor] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const fetchUsers = async () => {
     const res = await fetch("/api/admin/users");
@@ -57,6 +61,27 @@ export default function AdminUsersPage() {
     setCreating(false);
   };
 
+  const handleChangePassword = async (id: string, uname: string) => {
+    if (!newPassword || newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    setError("");
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, password: newPassword }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setSuccess(`Password changed for '${uname}'`);
+      setChangingPwFor(null);
+      setNewPassword("");
+    } else {
+      setError(data.error);
+    }
+  };
+
   const handleDelete = async (id: string, uname: string) => {
     if (!confirm(`Delete user '${uname}'?`)) return;
 
@@ -77,6 +102,25 @@ export default function AdminUsersPage() {
       setSuccess("");
     }
   };
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const dir = sortOrder === "asc" ? 1 : -1;
+      if (sortBy === "username") return a.username.localeCompare(b.username) * dir;
+      if (sortBy === "name") return (a.name || "").localeCompare(b.name || "") * dir;
+      if (sortBy === "createdAt") return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
+      return 0;
+    });
+  }, [users, sortBy, sortOrder]);
 
   return (
     <div className="space-y-6">
@@ -100,10 +144,25 @@ export default function AdminUsersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left">
             <tr>
-              <th className="px-4 py-3 font-medium text-gray-500">Username</th>
-              <th className="px-4 py-3 font-medium text-gray-500">Name</th>
-              <th className="px-4 py-3 font-medium text-gray-500">Created</th>
-              <th className="px-4 py-3 font-medium text-gray-500 w-20">Action</th>
+              <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("username")}>
+                <div className="flex items-center gap-1">
+                  Username
+                  {sortBy === "username" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                </div>
+              </th>
+              <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("name")}>
+                <div className="flex items-center gap-1">
+                  Name
+                  {sortBy === "name" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                </div>
+              </th>
+              <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("createdAt")}>
+                <div className="flex items-center gap-1">
+                  Created
+                  {sortBy === "createdAt" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                </div>
+              </th>
+              <th className="px-4 py-3 font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -116,7 +175,7 @@ export default function AdminUsersPage() {
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-400">No users</td>
               </tr>
             ) : (
-              users.map((u) => (
+              sortedUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-[#1A1A2E]">{u.username}</td>
                   <td className="px-4 py-3 text-gray-600">{u.name || "-"}</td>
@@ -124,12 +183,46 @@ export default function AdminUsersPage() {
                     {new Date(u.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleDelete(u.id, u.username)}
-                      className="text-xs text-red-600 hover:text-red-800"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {changingPwFor === u.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="New password"
+                            minLength={6}
+                            className="px-2 py-1 border border-gray-200 rounded text-xs w-32"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleChangePassword(u.id, u.username)}
+                            className="text-xs text-white bg-[#004D98] px-2 py-1 rounded hover:bg-[#003d7a]"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => { setChangingPwFor(null); setNewPassword(""); }}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setChangingPwFor(u.id); setNewPassword(""); setError(""); setSuccess(""); }}
+                          className="text-xs text-[#004D98] hover:text-[#003d7a]"
+                        >
+                          Change Password
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(u.id, u.username)}
+                        className="text-xs text-red-600 hover:text-red-800"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

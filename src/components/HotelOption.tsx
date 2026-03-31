@@ -14,7 +14,7 @@ export default function HotelOption({ label, priceFrom, affiliateUrl, nights }: 
       </div>
       <div className="flex items-center justify-between">
         <span className="text-lg font-bold text-[#004D98]">From €{priceFrom}<span className="text-xs font-normal text-gray-500">/night</span></span>
-        <a href={affiliateUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary text-sm py-2 px-4" data-affiliate="hotel">
+        <a href={affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer" className="btn-secondary text-sm py-2 px-4" data-affiliate="hotel">
           Book Hotel
         </a>
       </div>

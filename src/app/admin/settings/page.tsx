@@ -143,7 +143,7 @@ export default async function AdminSettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">BRAVE_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">Brave Search API for web search. Get at <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">brave.com/search/api</a> (free: 2000/month)</p>
+                <p className="text-xs text-gray-500 mt-0.5">Brave Search API for web search + Live match chronicle context. Get at <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">brave.com/search/api</a> (free: 2000/month)</p>
               </div>
               <StatusBadge {...brave} />
             </div>
@@ -157,7 +157,7 @@ export default async function AdminSettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">PERPLEXITY_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">Perplexity Sonar web search. Get at <a href="https://docs.perplexity.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">perplexity.ai</a></p>
+                <p className="text-xs text-gray-500 mt-0.5">Perplexity Sonar web search + Primary live match source. Get at <a href="https://docs.perplexity.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">perplexity.ai</a></p>
               </div>
               <StatusBadge {...perplexity} />
             </div>
@@ -171,7 +171,7 @@ export default async function AdminSettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <span className="font-mono text-sm font-medium text-[#1A1A2E]">GROK_API_KEY</span>
-                <p className="text-xs text-gray-500 mt-0.5">Grok (xAI) web search. Get at <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">console.x.ai</a></p>
+                <p className="text-xs text-gray-500 mt-0.5">Grok (xAI) web search + Live match context from X/Twitter. Get at <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-[#004D98] hover:underline">console.x.ai</a></p>
               </div>
               <StatusBadge {...grok} />
             </div>

@@ -4,23 +4,27 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import LanguageSelector from './LanguageSelector';
-import { useLanguage } from '@/lib/LanguageContext';
+import { useLanguage, useLocalePath } from '@/lib/LanguageContext';
+import SearchModal from './SearchModal';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { t } = useLanguage();
+  const lp = useLocalePath();
 
   const navLinks = [
-    { href: '/', label: t('nav.home') },
-    { href: '/competitions', label: t('nav.competitions') },
-    { href: '/packages', label: t('nav.packages') },
-    { href: '/calendar', label: t('nav.calendar') },
-    { href: '/gallery', label: t('nav.gallery') },
-    { href: '/news', label: t('nav.news') },
-    { href: '/blog', label: t('nav.blog') },
-    { href: '/guides', label: t('nav.guides') },
-    { href: '/about', label: t('nav.about') },
+    { href: lp('/'), label: t('nav.home') },
+    { href: lp('/competitions'), label: t('nav.competitions') },
+    { href: lp('/packages'), label: t('nav.packages') },
+    { href: lp('/calendar'), label: t('nav.calendar') },
+    { href: lp('/gallery'), label: t('nav.gallery') },
+    { href: lp('/news'), label: t('nav.news') },
+    { href: lp('/blog'), label: t('nav.blog') },
+    { href: lp('/guides'), label: t('nav.guides') },
+    { href: lp('/history'), label: t('nav.history') },
+    { href: lp('/about'), label: t('nav.about') },
   ];
 
   useEffect(() => {
@@ -34,9 +38,20 @@ export default function Navbar() {
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <header className={`sticky top-0 z-50 w-full bg-white transition-shadow duration-300 ${scrolled ? 'shadow-md' : 'shadow-none'}`}>
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      <nav aria-label="Main navigation" className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold">
           <Image src="/images/fcb-crest.png" alt="FC Barcelona" width={32} height={32} className="h-8 w-8" priority />
           <span>Friends of <span className="text-[#A50044]">Bar&ccedil;a</span></span>
@@ -51,10 +66,10 @@ export default function Navbar() {
         </ul>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <button onClick={() => setSearchOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" aria-label="Search">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+          </button>
           <LanguageSelector />
-          <Link href="/packages" className="rounded-lg bg-[#EDBB00] px-5 py-2.5 text-sm font-semibold text-[#1A1A2E] transition-all hover:bg-[#d4a800] hover:shadow-lg">
-            {t('nav.planTrip')}
-          </Link>
         </div>
 
         <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="relative z-50 flex h-10 w-10 items-center justify-center rounded-lg text-[#1A1A2E] transition-colors hover:bg-gray-100 lg:hidden" aria-label={mobileOpen ? 'Close menu' : 'Open menu'}>
@@ -78,12 +93,14 @@ export default function Navbar() {
             </li>
           ))}
         </ul>
-        <div className="mt-auto border-t border-gray-100 p-6">
-          <Link href="/packages" onClick={() => setMobileOpen(false)} className="block w-full rounded-lg bg-[#EDBB00] px-5 py-3 text-center text-sm font-semibold text-[#1A1A2E] transition-all hover:bg-[#d4a800] hover:shadow-lg">
-            {t('nav.planTrip')}
-          </Link>
+        <div className="mt-auto border-t border-gray-100 p-6 space-y-3">
+          <button onClick={() => { setMobileOpen(false); setSearchOpen(true); }} className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-5 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+            {t('nav.home') === 'Inicio' ? 'Buscar...' : 'Search...'}
+          </button>
         </div>
       </div>
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   );
 }

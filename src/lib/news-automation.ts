@@ -1,11 +1,61 @@
 import prisma from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
 import { XMLParser } from "fast-xml-parser";
+import { indexNewsArticle } from "@/lib/rag";
+import { slugify } from "@/lib/slugify";
 
 const BARCA_ID = 529; // FC Barcelona ID in API-Football (api-sports.io)
 const BARCA_FD_ID = 81; // FC Barcelona ID in football-data.org
 const API_BASE = "https://v3.football.api-sports.io";
 const FD_BASE = "https://api.football-data.org/v4";
+
+/** Pool of cover images for news articles */
+const COVER_IMAGES = [
+  "/images/packages/camp-nou-match.jpg",
+  "/images/packages/camp-nou-aerial.jpg",
+  "/images/packages/camp-nou-night.jpg",
+  "/images/packages/camp-nou-match2.jpg",
+  "/images/packages/camp-nou-exterior.jpg",
+  "/images/blog/camp-nou-wide.jpg",
+  "/images/blog/champions-league-trophy.jpg",
+  "/images/blog/camp-nou-tickets.jpg",
+];
+
+/** Get a random cover image, including approved gallery photos */
+async function getRandomCoverImage(): Promise<string> {
+  const pool = [...COVER_IMAGES];
+  try {
+    const galleryPhotos = await prisma.photo.findMany({
+      where: { status: "approved" },
+      select: { filename: true },
+      take: 20,
+      orderBy: { createdAt: "desc" },
+    });
+    for (const p of galleryPhotos) {
+      pool.push(`/uploads/gallery/${p.filename}`);
+    }
+  } catch { /* ignore - use static pool only */ }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** Strip markdown code blocks and extract raw JSON from Claude responses */
+function extractJson(raw: string): string {
+  let text = raw.trim();
+  // Remove markdown code block wrapping (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    text = codeBlockMatch[1].trim();
+  }
+  // If still not starting with {, try to find the JSON object
+  if (!text.startsWith("{")) {
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      text = text.substring(firstBrace, lastBrace + 1);
+    }
+  }
+  return text;
+}
 
 function getCurrentSeason(): number {
   const now = new Date();
@@ -40,18 +90,43 @@ async function getFootballDataApiKey(): Promise<string> {
   return process.env.FOOTBALL_DATA_API_KEY || "";
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[áàä]/g, "a")
-    .replace(/[éèë]/g, "e")
-    .replace(/[íìï]/g, "i")
-    .replace(/[óòö]/g, "o")
-    .replace(/[úùü]/g, "u")
-    .replace(/ñ/g, "n")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
+/** Ensure sources array has at least 1 item per source name, max 15 total */
+function deduplicateSources(sources: Array<{ name: string; url: string }>): Array<{ name: string; url: string }> {
+  const seen = new Map<string, { name: string; url: string }[]>();
+  for (const s of sources) {
+    if (!seen.has(s.name)) seen.set(s.name, []);
+    seen.get(s.name)!.push(s);
+  }
+  const result: Array<{ name: string; url: string }> = [];
+  // First pass: 1 per source
+  for (const [, items] of seen) result.push(items[0]);
+  // Second pass: fill remaining slots round-robin
+  let idx = 0;
+  const sourceNames = Array.from(seen.keys());
+  while (result.length < 15 && idx < sources.length) {
+    const remaining = sources.filter(s => !result.includes(s));
+    if (remaining.length === 0) break;
+    result.push(remaining[0]);
+    sources = sources.filter(s => s !== remaining[0]);
+    idx++;
+  }
+  return result.slice(0, 15);
+}
+
+/** Balance items across sources: max N items per source */
+function balanceItems(items: RssItem[], maxPerSource: number = 5): RssItem[] {
+  const bySource = new Map<string, RssItem[]>();
+  for (const item of items) {
+    if (!bySource.has(item.source)) bySource.set(item.source, []);
+    bySource.get(item.source)!.push(item);
+  }
+  const result: RssItem[] = [];
+  for (const [, sourceItems] of bySource) {
+    result.push(...sourceItems.slice(0, maxPerSource));
+  }
+  return result.sort((a, b) => {
+    try { return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); } catch { return 0; }
+  });
 }
 
 // ============== RSS FEED READING ==============
@@ -92,9 +167,24 @@ async function fetchRssItems(url: string, sourceName: string): Promise<RssItem[]
 
     return items.slice(0, 15).map((item: unknown) => {
       const i = item as Record<string, unknown>;
+      // Atom feeds have link as object(s) with @_href attribute
+      let link = "";
+      if (typeof i.link === "string") {
+        link = i.link;
+      } else if (Array.isArray(i.link)) {
+        const alt = (i.link as Record<string, string>[]).find(l => l["@_rel"] === "alternate");
+        link = (alt || i.link[0])?.["@_href"] || "";
+      } else if (i.link && typeof i.link === "object") {
+        link = (i.link as Record<string, string>)["@_href"] || "";
+      }
+      if (!link) link = String(i.guid || "");
+      // Atom title may be wrapped in object with #text
+      const title = typeof i.title === "object" && i.title !== null
+        ? String((i.title as Record<string, unknown>)["#text"] || "")
+        : String(i.title || "");
       return {
-        title: String(i.title || ""),
-        link: String(i.link || i.guid || ""),
+        title,
+        link,
         description: String(i.description || i.summary || i.content || "").replace(/<[^>]*>/g, "").slice(0, 300),
         pubDate: String(i.pubDate || i.published || i.updated || ""),
         source: sourceName,
@@ -139,10 +229,12 @@ export async function generateNewsDigest(customDate?: Date): Promise<string> {
       }
     });
 
-    const itemsForPrompt =
+    const itemsForPrompt = balanceItems(
       recentItems.length > 0
         ? recentItems
-        : allItems.slice(0, 20); // Fallback to latest items
+        : allItems.slice(0, 30), // Fallback to latest items
+      5 // Max 5 items per source
+    );
 
     const itemsSummary = itemsForPrompt
       .map(
@@ -161,24 +253,29 @@ export async function generateNewsDigest(customDate?: Date): Promise<string> {
     const client = new Anthropic({ apiKey: anthropicKey });
     const response = await client.messages.create({
       model: "claude-sonnet-4-5-20250929",
-      max_tokens: 2000,
+      max_tokens: 3500,
       messages: [
         {
           role: "user",
           content: `You are a sports journalist writing for FriendsOfBarca.com, a fan site for FC Barcelona.
 
-Based on the following news items from various sources, write a comprehensive news digest for ${dateStr}.
+Based on the following news items from various sources, write a comprehensive news digest for ${dateStr} in BOTH English and Spanish.
 
 NEWS ITEMS:
 ${itemsSummary}
 
 Respond ONLY with valid JSON (no markdown, no code blocks):
 {
-  "title": "Engaging title for the digest (include date range like 'Feb 5-8')",
-  "excerpt": "2-3 sentence summary of the main stories (max 200 chars)",
-  "content": "Full article in plain text with paragraphs separated by double newlines. Include sections with ## headers. Cover the 3-5 most important stories. Write 400-600 words. Be engaging and informative. Reference source names when citing info.",
-  "metaTitle": "SEO title (under 60 chars)",
-  "metaDescription": "SEO description (under 160 chars)"
+  "title": "Catchy, content-specific headline in English. NEVER use generic titles like 'Barcelona News Digest' or 'News Roundup'. Instead, highlight the 2-3 main stories, e.g. 'Araujo Returns, Copa Clash Looms & Laporta's Bold Promise'. Include date.",
+  "titleEs": "Titular llamativo y específico en español. NUNCA uses títulos genéricos como 'Resumen de Noticias del Barça'. Destaca las 2-3 noticias principales, ej: 'Araujo Vuelve, Se Acerca el Duelo de Copa y la Promesa de Laporta'. Incluir fecha.",
+  "excerpt": "2-3 sentence summary in English (max 200 chars)",
+  "excerptEs": "Resumen de 2-3 frases en español (max 200 chars)",
+  "content": "Full article in English with ## headers. Cover the 3-5 most important stories. Write 400-600 words.",
+  "contentEs": "Artículo completo en español con ## para encabezados. Cubrir las 3-5 noticias más importantes. Escribir 400-600 palabras.",
+  "metaTitle": "SEO title in English (under 60 chars)",
+  "metaTitleEs": "Título SEO en español (menos de 60 chars)",
+  "metaDescription": "SEO description in English (under 160 chars)",
+  "metaDescriptionEs": "Descripción SEO en español (menos de 160 chars)"
 }`,
         },
       ],
@@ -186,32 +283,53 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
     // Strip markdown code blocks if Claude wraps them
-    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    text = extractJson(text);
     const parsed = JSON.parse(text);
 
-    const slug = slugify(`barca-news-digest-${publishDate.toISOString().slice(0, 10)}`);
-
-    // Check if slug exists
-    const existing = await prisma.newsArticle.findUnique({ where: { slug } });
-    if (existing) {
+    // Check if digest already exists for this date (by old-style slug)
+    const dateSlug = slugify(`barca-news-digest-${publishDate.toISOString().slice(0, 10)}`);
+    const existingByDate = await prisma.newsArticle.findFirst({
+      where: {
+        OR: [
+          { slug: dateSlug },
+          { oldSlug: dateSlug },
+          { slug: { startsWith: `barca-news-digest-${publishDate.toISOString().slice(0, 10)}` } },
+        ],
+        category: "digest",
+      },
+    });
+    if (existingByDate) {
       await prisma.automationRun.update({
         where: { id: runId },
         data: { status: "success", message: "Digest already exists for this date.", endedAt: new Date() },
       });
-      return existing.id;
+      return existingByDate.id;
     }
 
+    // Generate SEO-friendly slug from AI title
+    const titleForSlug = parsed.title || `FC Barcelona News Digest ${dateStr}`;
+    let slug = slugify(titleForSlug);
+    const existingSlugCheck = await prisma.newsArticle.findUnique({ where: { slug } });
+    if (existingSlugCheck) slug = `${slug}-${publishDate.toISOString().slice(0, 10)}`;
+
+    const coverImage = await getRandomCoverImage();
     const article = await prisma.newsArticle.create({
       data: {
         slug,
         title: parsed.title || `FC Barcelona News Digest - ${dateStr}`,
+        titleEs: parsed.titleEs || null,
         excerpt: parsed.excerpt || "",
+        excerptEs: parsed.excerptEs || null,
         content: parsed.content || "",
+        contentEs: parsed.contentEs || null,
+        coverImage,
         category: "digest",
-        sources: itemsForPrompt.map((i) => ({ name: i.source, url: i.link })).slice(0, 10),
+        sources: deduplicateSources(itemsForPrompt.map((i) => ({ name: i.source, url: i.link }))),
         author: "Friends of Barça AI",
         metaTitle: parsed.metaTitle || "",
+        metaTitleEs: parsed.metaTitleEs || null,
         metaDescription: parsed.metaDescription || "",
+        metaDescriptionEs: parsed.metaDescriptionEs || null,
         publishedAt: publishDate,
       },
     });
@@ -225,6 +343,9 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         endedAt: new Date(),
       },
     });
+
+    // Index into RAG knowledge base
+    try { await indexNewsArticle(article.id); } catch (e) { console.error("[RAG] Index digest error:", e); }
 
     return article.id;
   } catch (err) {
@@ -315,12 +436,21 @@ export async function generateMatchChronicle(customDate?: Date): Promise<string 
       ? `${match.goals.home}-${match.goals.away}`
       : `${match.goals.away}-${match.goals.home}`;
 
-    // Check if chronicle already exists for this match
+    // Check if chronicle already exists for this match (by slug OR matchDate)
     const matchDateObj = new Date(match.fixture.date);
-    const existingSlug = slugify(
-      `barca-${result}-${opponent}-${scoreStr}-${dateStr}`
-    );
-    const existing = await prisma.newsArticle.findUnique({ where: { slug: existingSlug } });
+    const legacySlug = slugify(`barca-${result}-${opponent}-${scoreStr}-${dateStr}`);
+    const dayStart = new Date(matchDateObj); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(matchDateObj); dayEnd.setHours(23, 59, 59, 999);
+    const existing = await prisma.newsArticle.findFirst({
+      where: {
+        category: "chronicle",
+        OR: [
+          { slug: legacySlug },
+          { oldSlug: legacySlug },
+          { matchDate: { gte: dayStart, lte: dayEnd } },
+        ],
+      },
+    });
     if (existing) {
       await prisma.automationRun.update({
         where: { id: runId },
@@ -337,11 +467,11 @@ export async function generateMatchChronicle(customDate?: Date): Promise<string 
     const client = new Anthropic({ apiKey: anthropicKey });
     const response = await client.messages.create({
       model: "claude-sonnet-4-5-20250929",
-      max_tokens: 2500,
+      max_tokens: 4500,
       messages: [
         {
           role: "user",
-          content: `You are a passionate sports journalist for FriendsOfBarca.com. Write a detailed match chronicle.
+          content: `You are a passionate sports journalist for FriendsOfBarca.com. Write a detailed match chronicle in BOTH English and Spanish.
 
 MATCH DATA:
 - Competition: ${match.league.name}
@@ -352,15 +482,20 @@ MATCH DATA:
 - Referee: ${referee}
 - Result for Barcelona: ${result.toUpperCase()}
 
-Write an engaging match report. Consider the scoreline, the competition context, and what this means for Barcelona's season.
+Write an engaging match report in both languages. Consider the scoreline, the competition context, and what this means for Barcelona's season.
 
 Respond ONLY with valid JSON (no markdown, no code blocks):
 {
-  "title": "Engaging headline (include score, e.g. 'Barcelona Cruise Past Real Madrid 3-1 in El Clásico')",
-  "excerpt": "Brief 2-sentence summary of the match (max 200 chars)",
-  "content": "Full match report in plain text. Use ## for section headers. Include: Pre-match context, First half summary, Second half summary, Key moments, Player performances, What this means for the season. Write 500-800 words. Be passionate but objective.",
-  "metaTitle": "SEO title (under 60 chars)",
-  "metaDescription": "SEO description (under 160 chars)"
+  "title": "Engaging headline in English (include score)",
+  "titleEs": "Titular atractivo en español (incluir resultado)",
+  "excerpt": "Brief 2-sentence summary in English (max 200 chars)",
+  "excerptEs": "Resumen breve de 2 frases en español (max 200 chars)",
+  "content": "Full match report in English. Use ## for section headers. 500-800 words.",
+  "contentEs": "Crónica completa en español. Usar ## para encabezados. 500-800 palabras.",
+  "metaTitle": "SEO title in English (under 60 chars)",
+  "metaTitleEs": "Título SEO en español (menos de 60 chars)",
+  "metaDescription": "SEO description in English (under 160 chars)",
+  "metaDescriptionEs": "Descripción SEO en español (menos de 160 chars)"
 }`,
         },
       ],
@@ -368,22 +503,35 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
     // Strip markdown code blocks if Claude wraps them
-    text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    text = extractJson(text);
     const parsed = JSON.parse(text);
 
+    // Generate SEO-friendly slug from AI title
+    const chronicleTitle = parsed.title || `Barcelona ${scoreStr} ${opponent}`;
+    let chronicleSlug = slugify(chronicleTitle);
+    const slugExists = await prisma.newsArticle.findUnique({ where: { slug: chronicleSlug } });
+    if (slugExists) chronicleSlug = `${chronicleSlug}-${dateStr}`;
+
+    const chronicleCover = await getRandomCoverImage();
     const article = await prisma.newsArticle.create({
       data: {
-        slug: existingSlug,
-        title: parsed.title || `Barcelona ${scoreStr} ${opponent}`,
+        slug: chronicleSlug,
+        title: chronicleTitle,
+        titleEs: parsed.titleEs || null,
         excerpt: parsed.excerpt || "",
+        excerptEs: parsed.excerptEs || null,
         content: parsed.content || "",
+        contentEs: parsed.contentEs || null,
+        coverImage: chronicleCover,
         category: "chronicle",
         matchDate: matchDateObj,
         matchResult: `${scoreStr} (${result})`,
         sources: [],
         author: "Friends of Barça AI",
         metaTitle: parsed.metaTitle || "",
+        metaTitleEs: parsed.metaTitleEs || null,
         metaDescription: parsed.metaDescription || "",
+        metaDescriptionEs: parsed.metaDescriptionEs || null,
         publishedAt: matchDateObj,
       },
     });
@@ -395,12 +543,15 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         message: `Chronicle created: "${parsed.title}"`,
         details: {
           articleId: article.id,
-          slug: existingSlug,
+          slug: chronicleSlug,
           match: `${match.teams.home.name} ${match.goals.home}-${match.goals.away} ${match.teams.away.name}`,
         },
         endedAt: new Date(),
       },
     });
+
+    // Index into RAG knowledge base
+    try { await indexNewsArticle(article.id); } catch (e) { console.error("[RAG] Index chronicle error:", e); }
 
     return article.id;
   } catch (err) {
@@ -469,9 +620,11 @@ export async function seedRetroactiveContent(weeks: number = 10): Promise<{
       const scoreStr = isHome
         ? `${match.goals.home}-${match.goals.away}`
         : `${match.goals.away}-${match.goals.home}`;
-      const slug = slugify(`barca-${result}-${opponent}-${scoreStr}-${matchDate.toISOString().slice(0, 10)}`);
+      const legacySeedSlug = slugify(`barca-${result}-${opponent}-${scoreStr}-${matchDate.toISOString().slice(0, 10)}`);
 
-      const existing = await prisma.newsArticle.findUnique({ where: { slug } });
+      const existing = await prisma.newsArticle.findFirst({
+        where: { OR: [{ slug: legacySeedSlug }, { oldSlug: legacySeedSlug }], category: "chronicle" },
+      });
       if (existing) continue;
 
       const htHome = match.score.halftime.home ?? 0;
@@ -509,15 +662,22 @@ Respond ONLY with valid JSON:
       });
 
       let text = response.content[0].type === "text" ? response.content[0].text : "";
-      text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+      text = extractJson(text);
       const parsed = JSON.parse(text);
 
+      const seedTitle = parsed.title || `Barcelona ${scoreStr} ${opponent}`;
+      let seedSlug = slugify(seedTitle);
+      const seedSlugExists = await prisma.newsArticle.findUnique({ where: { slug: seedSlug } });
+      if (seedSlugExists) seedSlug = `${seedSlug}-${matchDate.toISOString().slice(0, 10)}`;
+
+      const seedCover = await getRandomCoverImage();
       await prisma.newsArticle.create({
         data: {
-          slug,
-          title: parsed.title || `Barcelona ${scoreStr} ${opponent}`,
+          slug: seedSlug,
+          title: seedTitle,
           excerpt: parsed.excerpt || "",
           content: parsed.content || "",
+          coverImage: seedCover,
           category: "chronicle",
           matchDate,
           matchResult: `${scoreStr} (${result})`,
@@ -547,8 +707,10 @@ Respond ONLY with valid JSON:
 
   for (const digestDate of digestDates) {
     try {
-      const slug = slugify(`barca-news-digest-${digestDate.toISOString().slice(0, 10)}`);
-      const existing = await prisma.newsArticle.findUnique({ where: { slug } });
+      const legacyDigestSlug = slugify(`barca-news-digest-${digestDate.toISOString().slice(0, 10)}`);
+      const existing = await prisma.newsArticle.findFirst({
+        where: { OR: [{ slug: legacyDigestSlug }, { oldSlug: legacyDigestSlug }], category: "digest" },
+      });
       if (existing) continue;
 
       const dateStr = digestDate.toLocaleDateString("en-US", {
@@ -594,13 +756,18 @@ Respond ONLY with valid JSON:
       });
 
       let text = response.content[0].type === "text" ? response.content[0].text : "";
-      text = text.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+      text = extractJson(text);
       const parsed = JSON.parse(text);
+
+      const seedDigestTitle = parsed.title || `FC Barcelona News Digest - ${dateStr}`;
+      let seedDigestSlug = slugify(seedDigestTitle);
+      const seedDigestExists = await prisma.newsArticle.findUnique({ where: { slug: seedDigestSlug } });
+      if (seedDigestExists) seedDigestSlug = `${seedDigestSlug}-${digestDate.toISOString().slice(0, 10)}`;
 
       await prisma.newsArticle.create({
         data: {
-          slug,
-          title: parsed.title || `FC Barcelona News Digest - ${dateStr}`,
+          slug: seedDigestSlug,
+          title: seedDigestTitle,
           excerpt: parsed.excerpt || "",
           content: parsed.content || "",
           category: "digest",
@@ -708,13 +875,21 @@ export async function generateAutoChronicle(targetDate?: Date): Promise<string |
     const htAway = match.score.halfTime.away ?? 0;
     const halfTimeScore = `${htHome}-${htAway}`;
 
-    // Generate slug
-    const existingSlug = slugify(
-      `barca-${result}-${opponent}-${scoreStr}-${dateStr}`
-    );
-
-    // Check if chronicle already exists
-    const existing = await prisma.newsArticle.findUnique({ where: { slug: existingSlug } });
+    // Check if chronicle already exists (by slug OR matchDate)
+    const matchDateObj = new Date(match.utcDate);
+    const autoLegacySlug = slugify(`barca-${result}-${opponent}-${scoreStr}-${dateStr}`);
+    const dayStart = new Date(matchDateObj); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(matchDateObj); dayEnd.setHours(23, 59, 59, 999);
+    const existing = await prisma.newsArticle.findFirst({
+      where: {
+        category: "chronicle",
+        OR: [
+          { slug: autoLegacySlug },
+          { oldSlug: autoLegacySlug },
+          { matchDate: { gte: dayStart, lte: dayEnd } },
+        ],
+      },
+    });
     if (existing) {
       await prisma.automationRun.update({
         where: { id: runId },
@@ -722,8 +897,6 @@ export async function generateAutoChronicle(targetDate?: Date): Promise<string |
       });
       return existing.id;
     }
-
-    const matchDateObj = new Date(match.utcDate);
     const referee = match.referees?.[0]?.name || "Unknown";
     const competitionName = match.competition.name;
     const venue = isHome ? "Spotify Camp Nou, Barcelona" : "Away";
@@ -731,13 +904,13 @@ export async function generateAutoChronicle(targetDate?: Date): Promise<string |
     const client = new Anthropic({ apiKey: anthropicKey });
     const response = await client.messages.create({
       model: "claude-sonnet-4-5-20250929",
-      max_tokens: 3000,
+      max_tokens: 5000,
       messages: [
         {
           role: "user",
           content: `You are a passionate sports journalist writing for FriendsOfBarca.com, a fan site dedicated to FC Barcelona.
 
-Write a detailed, engaging match chronicle based on the following data.
+Write a detailed, engaging match chronicle based on the following data. You MUST provide BOTH English and Spanish versions.
 
 MATCH DATA:
 - Competition: ${competitionName}
@@ -748,7 +921,7 @@ MATCH DATA:
 - Referee: ${referee}
 - Result for Barcelona: ${result.toUpperCase()}
 
-Write an engaging match report in English. The article should be 500-800 words. Use ## for section headers. Include:
+Write an engaging match report. Each version should be 500-800 words. Use ## for section headers. Include:
 1. An engaging introduction
 2. First half summary
 3. Second half summary
@@ -757,11 +930,16 @@ Write an engaging match report in English. The article should be 500-800 words. 
 
 Respond ONLY with valid JSON (no markdown code blocks):
 {
-  "title": "Engaging headline with score",
-  "excerpt": "2-3 sentence summary (max 200 chars)",
-  "content": "Full match report with ## section headers",
-  "metaTitle": "SEO title under 60 chars",
-  "metaDescription": "SEO description under 160 chars"
+  "title": "Engaging headline with score (English)",
+  "titleEs": "Titular atractivo con resultado (Spanish)",
+  "excerpt": "2-3 sentence summary in English (max 200 chars)",
+  "excerptEs": "Resumen de 2-3 frases en español (max 200 chars)",
+  "content": "Full match report in English with ## section headers",
+  "contentEs": "Crónica completa en español con ## para encabezados de sección",
+  "metaTitle": "SEO title under 60 chars (English)",
+  "metaTitleEs": "Título SEO menos de 60 chars (Spanish)",
+  "metaDescription": "SEO description under 160 chars (English)",
+  "metaDescriptionEs": "Descripción SEO menos de 160 chars (Spanish)"
 }`,
         },
       ],
@@ -769,23 +947,35 @@ Respond ONLY with valid JSON (no markdown code blocks):
 
     let text = response.content[0].type === "text" ? response.content[0].text : "";
     // Strip markdown code blocks if present
-    text = text.replace(/^```json\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    text = extractJson(text);
     const parsed = JSON.parse(text);
 
+    // Generate SEO-friendly slug from AI title
+    const autoTitle = parsed.title || `Barcelona ${scoreStr} ${opponent}`;
+    let autoSlug = slugify(autoTitle);
+    const autoSlugExists = await prisma.newsArticle.findUnique({ where: { slug: autoSlug } });
+    if (autoSlugExists) autoSlug = `${autoSlug}-${dateStr}`;
+
+    const coverImage = await getRandomCoverImage();
     const article = await prisma.newsArticle.create({
       data: {
-        slug: existingSlug,
-        title: parsed.title || `Barcelona ${scoreStr} ${opponent}`,
+        slug: autoSlug,
+        title: autoTitle,
+        titleEs: parsed.titleEs || null,
         excerpt: parsed.excerpt || "",
+        excerptEs: parsed.excerptEs || null,
         content: parsed.content || "",
-        coverImage: "/images/packages/camp-nou-match.jpg",
+        contentEs: parsed.contentEs || null,
+        coverImage,
         category: "chronicle",
         matchDate: matchDateObj,
         matchResult: `${scoreStr} (${result})`,
         sources: [],
         author: "Friends of Barça AI",
         metaTitle: parsed.metaTitle || "",
+        metaTitleEs: parsed.metaTitleEs || null,
         metaDescription: parsed.metaDescription || "",
+        metaDescriptionEs: parsed.metaDescriptionEs || null,
         publishedAt: matchDateObj,
       },
     });
@@ -797,7 +987,7 @@ Respond ONLY with valid JSON (no markdown code blocks):
         message: `Auto chronicle created: "${parsed.title}"`,
         details: {
           articleId: article.id,
-          slug: existingSlug,
+          slug: autoSlug,
           match: `${match.homeTeam.name} ${match.score.fullTime.home}-${match.score.fullTime.away} ${match.awayTeam.name}`,
           competition: competitionName,
         },
@@ -805,7 +995,211 @@ Respond ONLY with valid JSON (no markdown code blocks):
       },
     });
 
+    // Index into RAG knowledge base
+    try { await indexNewsArticle(article.id); } catch (e) { console.error("[RAG] Index auto-chronicle error:", e); }
+
     return article.id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await prisma.automationRun.update({
+      where: { id: runId },
+      data: { status: "error", message: msg, endedAt: new Date() },
+    });
+    throw err;
+  }
+}
+
+// ============== MATCH PREVIEW ==============
+
+export async function generateMatchPreview(): Promise<string | null> {
+  const runId = crypto.randomUUID();
+  await prisma.automationRun.create({
+    data: { id: runId, type: "match_preview", status: "running" },
+  });
+
+  try {
+    const fdKey = await getFootballDataApiKey();
+    if (!fdKey) throw new Error("FOOTBALL_DATA_API_KEY not configured");
+    const anthropicKey = await getAnthropicKey();
+    if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY not configured");
+
+    // Fetch next scheduled Barça match
+    const now = new Date();
+    const dateFrom = now.toISOString().slice(0, 10);
+    const dateTo = new Date(now.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+
+    const matchesRes = await fetch(
+      `${FD_BASE}/teams/${BARCA_FD_ID}/matches?status=SCHEDULED&dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      { headers: { "X-Auth-Token": fdKey }, cache: "no-store" }
+    );
+
+    if (!matchesRes.ok) throw new Error(`football-data.org error: ${matchesRes.status}`);
+    const matchesData = await matchesRes.json();
+    const scheduledMatches = matchesData.matches || [];
+
+    if (scheduledMatches.length === 0) {
+      await prisma.automationRun.update({
+        where: { id: runId },
+        data: { status: "success", message: "No upcoming matches in next 14 days", endedAt: new Date() },
+      });
+      return null;
+    }
+
+    const nextMatch = scheduledMatches[0];
+    const isHome = nextMatch.homeTeam.id === BARCA_FD_ID;
+    const opponent = isHome ? nextMatch.awayTeam.name : nextMatch.homeTeam.name;
+    const matchDate = new Date(nextMatch.utcDate);
+    const competition = nextMatch.competition.name;
+    const venue = isHome ? "Spotify Camp Nou" : "Away";
+    const matchDateStr = matchDate.toLocaleDateString("en-US", {
+      weekday: "long", month: "long", day: "numeric", year: "numeric",
+    });
+
+    // Check for duplicate preview
+    const legacyPreviewSlug = slugify(`preview-barca-vs-${opponent}-${matchDate.toISOString().slice(0, 10)}`);
+    const existingPreview = await prisma.newsArticle.findFirst({
+      where: {
+        OR: [
+          { slug: legacyPreviewSlug },
+          { oldSlug: legacyPreviewSlug },
+        ],
+        category: "preview",
+      },
+    });
+    if (existingPreview) {
+      await prisma.automationRun.update({
+        where: { id: runId },
+        data: { status: "success", message: `Preview already exists`, endedAt: new Date() },
+      });
+      return null;
+    }
+
+    // Fetch Barça recent form
+    await new Promise(r => setTimeout(r, 7000)); // rate limit
+    const formRes = await fetch(
+      `${FD_BASE}/teams/${BARCA_FD_ID}/matches?status=FINISHED&limit=5`,
+      { headers: { "X-Auth-Token": fdKey }, cache: "no-store" }
+    );
+    let formContext = "Recent form unavailable.";
+    if (formRes.ok) {
+      const formData = await formRes.json();
+      const recentMatches = (formData.matches || []).map((m: {
+        homeTeam: { id: number; name: string };
+        awayTeam: { name: string };
+        score: { fullTime: { home: number | null; away: number | null } };
+        competition: { name: string };
+      }) => {
+        const home = m.homeTeam.id === BARCA_FD_ID;
+        const opp = home ? m.awayTeam.name : m.homeTeam.name;
+        const bG = home ? (m.score.fullTime.home ?? 0) : (m.score.fullTime.away ?? 0);
+        const oG = home ? (m.score.fullTime.away ?? 0) : (m.score.fullTime.home ?? 0);
+        const r = bG > oG ? "W" : bG < oG ? "L" : "D";
+        return `${r} ${bG}-${oG} vs ${opp} (${m.competition.name})`;
+      });
+      formContext = recentMatches.join("\n");
+    }
+
+    // Fetch standings if league match
+    let standingsContext = "";
+    if (["PD", "PL", "SA", "BL1", "FL1"].includes(nextMatch.competition.code)) {
+      await new Promise(r => setTimeout(r, 7000));
+      const standRes = await fetch(
+        `${FD_BASE}/competitions/${nextMatch.competition.code}/standings`,
+        { headers: { "X-Auth-Token": fdKey }, cache: "no-store" }
+      );
+      if (standRes.ok) {
+        const standData = await standRes.json();
+        const table = standData.standings?.[0]?.table || [];
+        const top5 = table.slice(0, 5).map((t: { position: number; team: { name: string }; points: number; playedGames: number; won: number; draw: number; lost: number }) =>
+          `${t.position}. ${t.team.name} - ${t.points}pts (${t.playedGames}GP, ${t.won}W ${t.draw}D ${t.lost}L)`
+        );
+        standingsContext = `\nCurrent standings (top 5):\n${top5.join("\n")}`;
+      }
+    }
+
+    // Generate preview with Claude AI
+    const client = new Anthropic({ apiKey: anthropicKey });
+    const aiResponse = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 3000,
+      messages: [{
+        role: "user",
+        content: `You are a football journalist for FriendsOfBarca.com. Write a match PREVIEW article for the upcoming game.
+
+Match: FC Barcelona vs ${opponent}
+Competition: ${competition}
+Date: ${matchDateStr}
+Venue: ${venue}
+
+Barcelona recent form (last 5):
+${formContext}
+${standingsContext}
+
+Write a JSON with these fields:
+{
+  "title": "English title (include both team names)",
+  "titleEs": "Spanish title",
+  "excerpt": "English excerpt (2-3 sentences)",
+  "excerptEs": "Spanish excerpt",
+  "content": "Full English article in markdown (600-800 words). Include: ## Match Context, ## Key Players to Watch, ## Tactical Preview, ## Prediction. Be analytical and insightful.",
+  "contentEs": "Full Spanish article in markdown (600-800 words). Same sections: ## Contexto del Partido, ## Jugadores Clave, ## Vista Previa Táctica, ## Predicción.",
+  "metaTitle": "SEO title EN (max 60 chars)",
+  "metaTitleEs": "SEO title ES",
+  "metaDescription": "SEO description EN (max 160 chars)",
+  "metaDescriptionEs": "SEO description ES"
+}
+
+Respond with ONLY the raw JSON (no markdown blocks).`,
+      }],
+    });
+
+    let responseText = aiResponse.content[0].type === "text" ? aiResponse.content[0].text : "";
+    responseText = extractJson(responseText);
+    const parsed = JSON.parse(responseText);
+
+    const coverImage = await getRandomCoverImage();
+
+    // Generate SEO-friendly slug from AI title
+    let previewSlug = slugify(parsed.title || `Preview Barcelona vs ${opponent}`);
+    const previewSlugExists = await prisma.newsArticle.findUnique({ where: { slug: previewSlug } });
+    if (previewSlugExists) previewSlug = `${previewSlug}-${matchDate.toISOString().slice(0, 10)}`;
+
+    const previewArticle = await prisma.newsArticle.create({
+      data: {
+        slug: previewSlug,
+        title: parsed.title,
+        titleEs: parsed.titleEs || null,
+        excerpt: parsed.excerpt,
+        excerptEs: parsed.excerptEs || null,
+        content: parsed.content,
+        contentEs: parsed.contentEs || null,
+        category: "preview",
+        status: "published",
+        coverImage,
+        author: "FriendsOfBarca AI",
+        matchResult: `vs ${opponent}`,
+        publishedAt: new Date(),
+        metaTitle: parsed.metaTitle || parsed.title,
+        metaTitleEs: parsed.metaTitleEs || parsed.titleEs || null,
+        metaDescription: parsed.metaDescription || parsed.excerpt,
+        metaDescriptionEs: parsed.metaDescriptionEs || parsed.excerptEs || null,
+      },
+    });
+
+    await prisma.automationRun.update({
+      where: { id: runId },
+      data: {
+        status: "success",
+        message: `Preview generated: ${parsed.title}`,
+        endedAt: new Date(),
+        details: { articleId: previewArticle.id, opponent, matchDate: matchDate.toISOString() },
+      },
+    });
+
+    // Index into RAG knowledge base
+    try { await indexNewsArticle(previewArticle.id); } catch (e) { console.error("[RAG] Index preview error:", e); }
+
+    return previewArticle.id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await prisma.automationRun.update({

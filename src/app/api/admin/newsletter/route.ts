@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Delete a draft newsletter
+// DELETE - Delete a newsletter
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -59,10 +59,9 @@ export async function DELETE(request: NextRequest) {
     if (!newsletter) {
       return NextResponse.json({ error: "Newsletter not found" }, { status: 404 });
     }
-    if (newsletter.status !== "draft") {
-      return NextResponse.json({ error: "Only drafts can be deleted" }, { status: 400 });
-    }
 
+    // Delete related tracking opens first
+    await prisma.newsletterOpen.deleteMany({ where: { newsletterId: id } });
     await prisma.newsletter.delete({ where: { id } });
 
     return NextResponse.json({ success: true });

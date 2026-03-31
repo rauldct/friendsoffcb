@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface AutomationRun {
   id: string;
@@ -42,63 +42,77 @@ interface ScheduleInfo {
 const SCHEDULE_ITEMS: ScheduleInfo[] = [
   {
     icon: '\u{1F4F0}', bg: 'bg-blue-100', fg: 'text-blue-600',
-    label: 'News Digest', desc: 'Mon & Thu at 8:00 AM UTC',
-    hour: 8, minute: 0, days: [1, 4],
+    label: 'News Digest', desc: 'Diario a las 8:30 CET',
+    hour: 7, minute: 30, days: null,
     endpoint: '/api/automations/news-digest',
     info: 'Fetches articles from 6 RSS sources (FCB Official, Marca, Sport, Mundo Deportivo, ESPN, BBC), summarizes them with Claude AI, and publishes a news digest article on the /news page.'
   },
   {
     icon: '\u{1F4EC}', bg: 'bg-pink-100', fg: 'text-pink-600',
-    label: 'Weekly Newsletter', desc: 'Monday at 8:00 AM UTC',
+    label: 'Weekly Newsletter', desc: 'Lunes a las 9:00 CET',
     hour: 8, minute: 0, days: [1],
     endpoint: '/api/automations/newsletter-digest',
     info: 'Compiles the week\'s match chronicles, next match preview (with Barça form & opponent data from football-data.org), and news digests. Claude AI generates a bilingual (EN + ES) HTML newsletter with photos. Sent to all active subscribers via Resend, each receiving their preferred language version.'
   },
   {
     icon: '\u{1F4DD}', bg: 'bg-red-100', fg: 'text-red-600',
-    label: 'Auto Chronicle (football-data.org)', desc: 'Daily at 10:00 UTC',
+    label: 'Auto Chronicle (football-data.org)', desc: 'Cada hora 17-00 CET + 11:00 CET',
     hour: 10, minute: 0, days: null,
     endpoint: '/api/automations/auto-chronicle',
-    info: 'Checks football-data.org for any Barcelona match played yesterday. If found, generates a detailed match chronicle using Claude AI with the match data (score, scorers, competition, venue) and publishes it on /news.'
+    info: 'Checks football-data.org for finished Barcelona matches. Runs hourly from 17:00-00:00 CET checking today\'s matches (post-match), plus 11:00 CET for yesterday\'s matches. Generates a detailed chronicle with Claude AI. Skips if chronicle already exists for that match.'
   },
   {
     icon: '\u26BD', bg: 'bg-orange-100', fg: 'text-orange-600',
-    label: 'Match Chronicle (legacy)', desc: 'Daily at 23:30 UTC',
+    label: 'Match Chronicle (legacy)', desc: 'Diario a las 00:30 CET',
     hour: 23, minute: 30, days: null,
     endpoint: '/api/automations/match-chronicle',
     info: 'Legacy fallback that uses API-Football to check if Barça played today. If the primary auto-chronicle (football-data.org) already created a chronicle, this one skips. Kept as a safety net.'
   },
   {
     icon: '\u{1F504}', bg: 'bg-green-100', fg: 'text-green-600',
-    label: 'Calendar Sync (La Liga + CL + Copa)', desc: 'Daily at 7:00 AM UTC',
+    label: 'Calendar Sync (La Liga + CL + Copa)', desc: 'Diario a las 8:00 CET',
     hour: 7, minute: 0, days: null,
     endpoint: '/api/automations/sync-matches',
     info: 'Fetches upcoming Barcelona matches from football-data.org (La Liga + Champions League) and API-Football (Copa del Rey). Downloads opponent crests as PNGs to /public/images/crests/. Updates the /calendar page with the latest schedule.'
   },
   {
     icon: '\u{1F3C6}', bg: 'bg-purple-100', fg: 'text-purple-600',
-    label: 'Competition Data', desc: 'Daily at 6:00 AM UTC',
+    label: 'Competition Data', desc: 'Diario a las 7:00 CET',
     hour: 6, minute: 0, days: null,
     endpoint: '/api/competitions/refresh',
     info: 'Updates standings for La Liga, Champions League, and Copa del Rey from football-data.org (primary) and API-Football (fallback). Calculates Barça stats and generates AI predictions for each competition. Shown on /competitions.'
   },
   {
     icon: '\u{1F3AB}', bg: 'bg-yellow-100', fg: 'text-yellow-600',
-    label: 'Package Sync (StubHub + GYG)', desc: 'Daily at 7:30 AM UTC',
+    label: 'Package Sync (StubHub + GYG)', desc: 'Diario a las 8:30 CET',
     hour: 7, minute: 30, days: null,
     endpoint: '/api/automations/sync-packages',
     info: 'Syncs match package data from StubHub (ticket availability and prices) and GetYourGuide (activities). Creates or updates match packages on /packages with affiliate links for tickets, hotels, and activities.'
   },
   {
     icon: '\u{1F3E0}', bg: 'bg-teal-100', fg: 'text-teal-600',
-    label: 'Penyes Sync (Scraping)', desc: 'Monday at 5:00 AM UTC',
+    label: 'Penyes Sync (Scraping)', desc: 'Lunes a las 6:00 CET',
     hour: 5, minute: 0, days: [1],
     endpoint: '/api/admin/penyes',
     info: 'Scrapes the official FCB supporter clubs directory from 3 URLs (Catalonia, Spain, World) using Cheerio. Updates the Penyes database with new clubs, cities, and regions. Currently tracking 1,217 penyes.'
   },
   {
+    icon: '\u{1F9E0}', bg: 'bg-violet-100', fg: 'text-violet-600',
+    label: 'Auto-Enrich Peñas (10)', desc: 'Diario a las 13:00 CET',
+    hour: 12, minute: 0, days: null,
+    endpoint: '/api/automations/enrich-penyes',
+    info: 'Automatically enriches up to 10 peñas per day using the multi-source pipeline (Brave Search, Perplexity, Grok, Web Scraping, Claude). Prioritizes: 1) Never enriched, 2) Failed (7-day cooldown), 3) Low quality (<30) enriched >90 days ago. At 10/day, all 1,217 peñas will be enriched in ~4 months.'
+  },
+  {
+    icon: '\u{1F50D}', bg: 'bg-cyan-100', fg: 'text-cyan-600',
+    label: 'Match Preview', desc: 'Diario a las 12:00 CET',
+    hour: 11, minute: 0, days: null,
+    endpoint: '/api/automations/match-preview',
+    info: 'Checks football-data.org for the next scheduled Barça match within 14 days. Generates a bilingual match preview article with Claude AI including match context, key players, tactical analysis, and prediction. Published on /news with category "preview".'
+  },
+  {
     icon: '\u{1F4DA}', bg: 'bg-indigo-100', fg: 'text-indigo-600',
-    label: 'Guide Generation', desc: 'Monthly, 1st at 9:00 AM UTC',
+    label: 'Guide Generation', desc: 'Mensual, día 1 a las 10:00 CET',
     hour: 9, minute: 0, days: null, monthDay: 1,
     endpoint: '/api/automations/generate-guide',
     info: 'Generates a new AI-written travel guide for Barcelona visitors using Claude. Topics include stadium guides, neighborhood guides, restaurant recommendations, and travel tips. Published on /guides.'
@@ -129,8 +143,10 @@ function getNextRun(hour: number, minute: number, daysOfWeek: number[] | null, m
     if (candidate <= now) candidate.setUTCDate(candidate.getUTCDate() + 1);
   }
 
-  const dateStr = candidate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-  const timeStr = candidate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false }) + ' UTC';
+  const dateStr = candidate.toLocaleDateString('es-ES', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Europe/Madrid' });
+  // Show CET time (UTC+1)
+  const cetHour = (hour + 1) % 24;
+  const timeStr = `${String(cetHour).padStart(2, '0')}:${String(minute).padStart(2, '0')} CET`;
   return { dateStr, timeStr };
 }
 
@@ -146,11 +162,38 @@ export default function AdminAutomationsPage() {
   const [scheduleRunning, setScheduleRunning] = useState<string | null>(null);
   const [scheduleMsg, setScheduleMsg] = useState('');
   const [utcTime, setUtcTime] = useState('');
+  const [sortBy, setSortBy] = useState<string>('startedAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortedRuns = useMemo(() => {
+    return [...runs].sort((a, b) => {
+      const dir = sortOrder === 'asc' ? 1 : -1;
+      if (sortBy === 'startedAt') return (new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()) * dir;
+      if (sortBy === 'type') return a.type.localeCompare(b.type) * dir;
+      if (sortBy === 'status') return a.status.localeCompare(b.status) * dir;
+      if (sortBy === 'message') return (a.message || '').localeCompare(b.message || '') * dir;
+      if (sortBy === 'duration') {
+        const da = a.endedAt ? new Date(a.endedAt).getTime() - new Date(a.startedAt).getTime() : 0;
+        const db = b.endedAt ? new Date(b.endedAt).getTime() - new Date(b.startedAt).getTime() : 0;
+        return (da - db) * dir;
+      }
+      return 0;
+    });
+  }, [runs, sortBy, sortOrder]);
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      setUtcTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'UTC' }));
+      setUtcTime(now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Europe/Madrid' }));
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -225,6 +268,8 @@ export default function AdminAutomationsPage() {
       package_sync: 'Package Sync',
       guide_generation: 'Guide Generation',
       newsletter_send: 'Newsletter Send',
+      match_preview: 'Match Preview',
+      penya_enrichment: 'Penya Enrichment',
     };
     return labels[type] || type;
   };
@@ -264,7 +309,9 @@ export default function AdminAutomationsPage() {
             { endpoint: '/api/automations/sync-matches', label: 'Sync Calendar', icon: '\u{1F504}', desc: 'Sync all matches (La Liga + CL + Copa) + download crests' },
             { endpoint: '/api/competitions/refresh', label: 'Refresh Competitions', icon: '\u{1F3C6}', desc: 'Update standings + AI predictions' },
             { endpoint: '/api/automations/sync-packages', label: 'Sync Packages', icon: '\u{1F3AB}', desc: 'Sync StubHub events + GYG activities' },
+            { endpoint: '/api/automations/match-preview', label: 'Match Preview', icon: '\u{1F50D}', desc: 'Generate preview for next match' },
             { endpoint: '/api/automations/generate-guide', label: 'Generate Guide', icon: '\u{1F4DA}', desc: 'Create a new travel guide with AI' },
+            { endpoint: '/api/automations/enrich-penyes', label: 'Auto-Enrich Peñas', icon: '\u{1F9E0}', desc: 'Enrich 10 pending peñas with AI' },
             { endpoint: '/api/automations/seed', label: 'Seed 10 Weeks', icon: '\u{1F331}', desc: 'Generate retroactive content (slow)' },
           ].map((action) => (
             <button
@@ -317,7 +364,7 @@ export default function AdminAutomationsPage() {
       {/* Cron Schedule */}
       <div className="bg-white rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-heading font-bold text-[#1A1A2E]">Automation Schedule <span className="text-xs font-normal text-gray-400 ml-1">({utcTime} UTC)</span></h2>
+          <h2 className="font-heading font-bold text-[#1A1A2E]">Automation Schedule <span className="text-xs font-normal text-gray-400 ml-1">({utcTime} CET)</span></h2>
         </div>
         <div className="p-5 space-y-3 text-sm">
           {SCHEDULE_ITEMS.map((item) => {
@@ -380,15 +427,40 @@ export default function AdminAutomationsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase border-b bg-gray-50">
-                  <th className="text-left py-3 px-4">Type</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Message</th>
-                  <th className="text-left py-3 px-4">Started</th>
-                  <th className="text-left py-3 px-4">Duration</th>
+                  <th className="text-left py-3 px-4 cursor-pointer select-none hover:text-gray-600" onClick={() => handleSort('type')}>
+                    <div className="flex items-center gap-1">
+                      Type
+                      {sortBy === 'type' ? <span className="text-[#004D98]">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-gray-300">{'\u25B2\u25BC'}</span>}
+                    </div>
+                  </th>
+                  <th className="text-left py-3 px-4 cursor-pointer select-none hover:text-gray-600" onClick={() => handleSort('status')}>
+                    <div className="flex items-center gap-1">
+                      Status
+                      {sortBy === 'status' ? <span className="text-[#004D98]">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-gray-300">{'\u25B2\u25BC'}</span>}
+                    </div>
+                  </th>
+                  <th className="text-left py-3 px-4 cursor-pointer select-none hover:text-gray-600" onClick={() => handleSort('message')}>
+                    <div className="flex items-center gap-1">
+                      Message
+                      {sortBy === 'message' ? <span className="text-[#004D98]">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-gray-300">{'\u25B2\u25BC'}</span>}
+                    </div>
+                  </th>
+                  <th className="text-left py-3 px-4 cursor-pointer select-none hover:text-gray-600" onClick={() => handleSort('startedAt')}>
+                    <div className="flex items-center gap-1">
+                      Started
+                      {sortBy === 'startedAt' ? <span className="text-[#004D98]">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-gray-300">{'\u25B2\u25BC'}</span>}
+                    </div>
+                  </th>
+                  <th className="text-left py-3 px-4 cursor-pointer select-none hover:text-gray-600" onClick={() => handleSort('duration')}>
+                    <div className="flex items-center gap-1">
+                      Duration
+                      {sortBy === 'duration' ? <span className="text-[#004D98]">{sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span> : <span className="text-gray-300">{'\u25B2\u25BC'}</span>}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {runs.map((run) => {
+                {sortedRuns.map((run) => {
                   const duration =
                     run.endedAt
                       ? `${Math.round((new Date(run.endedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)}s`

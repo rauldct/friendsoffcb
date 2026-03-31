@@ -29,7 +29,8 @@ const competitionColors: Record<string, string> = {
 };
 
 export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const dateLoc = locale === "es" ? "es-ES" : "en-US";
   const [filter, setFilter] = useState<"all" | "home" | "away">("all");
 
   const now = new Date();
@@ -45,7 +46,7 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
 
   const grouped: Record<string, Match[]> = {};
   filtered.forEach(m => {
-    const monthKey = new Date(m.date).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const monthKey = new Date(m.date).toLocaleDateString(dateLoc, { month: "long", year: "numeric" });
     if (!grouped[monthKey]) grouped[monthKey] = [];
     grouped[monthKey].push(m);
   });
@@ -70,7 +71,7 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              {f === "all" ? (t("calendar.home") + " & " + t("calendar.away")) : f === "home" ? t("calendar.home") : t("calendar.away")}
+              {f === "all" ? t("calendar.all") : f === "home" ? t("calendar.home") : t("calendar.away")}
             </button>
           ))}
         </div>
@@ -85,7 +86,7 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
         {/* CL notice if no CL matches yet */}
         {!hasCL && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-center text-sm text-blue-700">
-            Champions League Round of 16 draw: <strong>February 27, 2026</strong>. Matches will be added automatically after the draw.
+            {t("calendar.clNotice")}
           </div>
         )}
 
@@ -121,13 +122,13 @@ export default function MatchCalendarClient({ matches }: { matches: Match[] }) {
                             {/* Date block */}
                             <div className="text-center min-w-[60px]">
                               <div className="text-xs font-medium text-gray-500 uppercase">
-                                {matchDate.toLocaleDateString("en-US", { weekday: "short" })}
+                                {matchDate.toLocaleDateString(dateLoc, { weekday: "short" })}
                               </div>
                               <div className="text-2xl font-heading font-bold text-[#1A1A2E]">
                                 {matchDate.getDate()}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {matchDate.toLocaleDateString("en-US", { month: "short" })}
+                                {matchDate.toLocaleDateString(dateLoc, { month: "short" })}
                               </div>
                             </div>
 

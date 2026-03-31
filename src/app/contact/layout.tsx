@@ -14,6 +14,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "https://friendsofbarca.com/contact",
+    languages: { "en": "https://friendsofbarca.com/contact", "es": "https://friendsofbarca.com/es/contact", "x-default": "https://friendsofbarca.com/contact" },
   },
 };
 

@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import GalleryGrid from '@/components/GalleryGrid';
-import Link from 'next/link';
+import GalleryPageHeader from '@/components/GalleryPageHeader';
+import GalleryPageFooter from '@/components/GalleryPageFooter';
 import { Metadata } from 'next';
 
 export const revalidate = 60;
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://friendsofbarca.com/gallery',
+    languages: { "en": "https://friendsofbarca.com/gallery", "es": "https://friendsofbarca.com/es/gallery", "x-default": "https://friendsofbarca.com/gallery" },
   },
 };
 
@@ -43,21 +45,7 @@ export default async function GalleryPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="font-heading text-3xl font-bold text-[#1A1A2E] sm:text-4xl">Fan Gallery</h1>
-          <p className="mt-2 text-gray-600">Photos from Barça fans around the world</p>
-        </div>
-        <Link
-          href="/gallery/upload"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#A50044] px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-[#8a003a] hover:shadow-lg"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-          </svg>
-          Upload Photo
-        </Link>
-      </div>
+      <GalleryPageHeader />
 
       <GalleryGrid
         initialPhotos={serialized}
@@ -65,6 +53,8 @@ export default async function GalleryPage() {
         initialPage={1}
         totalPages={Math.ceil(total / limit)}
       />
+
+      <GalleryPageFooter />
     </div>
   );
 }

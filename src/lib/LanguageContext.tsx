@@ -15,18 +15,28 @@ const LanguageContext = createContext<LanguageContextType>({
 });
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("en");
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    // Synchronous detection: check URL path first (works on client)
+    if (typeof window !== "undefined") {
+      const p = window.location.pathname;
+      if (p.startsWith("/es/") || p === "/es") return "es";
+      // Fallback: cookie
+      const cm = document.cookie.match(/(?:^|; )locale=(en|es)/);
+      if (cm) return cm[1] as Locale;
+    }
+    return "en";
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem("locale") as Locale | null;
-    if (saved && (saved === "en" || saved === "es")) {
-      setLocaleState(saved);
-    }
-  }, []);
+    // Persist locale to cookie + localStorage
+    localStorage.setItem("locale", locale);
+    document.cookie = `locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+  }, [locale]);
 
   const setLocale = (newLocale: Locale) => {
     setLocaleState(newLocale);
     localStorage.setItem("locale", newLocale);
+    document.cookie = `locale=${newLocale}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
   };
 
   const t = (key: string) => translate(locale, key);
@@ -40,4 +50,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
 export function useLanguage() {
   return useContext(LanguageContext);
+}
+
+/**
+ * Returns a function that prefixes paths with /es when locale is Spanish.
+ * Usage: const lp = useLocalePath(); <Link href={lp("/news/slug")}>
+ */
+export function useLocalePath() {
+  const { locale } = useContext(LanguageContext);
+  return (path: string) => locale === "es" ? `/es${path}` : path;
 }

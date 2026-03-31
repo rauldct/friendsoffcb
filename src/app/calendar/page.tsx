@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import prisma from "@/lib/prisma";
 import MatchCalendarClient from "./MatchCalendarClient";
+import { eventsListJsonLd, breadcrumbJsonLd } from "@/lib/jsonld";
 
 export const metadata: Metadata = {
   title: "Match Calendar 2025-26",
@@ -8,6 +9,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: "FC Barcelona Match Calendar 2025-26",
     description: "All upcoming FC Barcelona matches. La Liga, Champions League & Copa del Rey schedule.",
+    locale: "en_US",
+    alternateLocale: "es_ES",
     images: ["/images/packages/camp-nou-night.jpg"],
   },
   twitter: {
@@ -17,6 +20,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "https://friendsofbarca.com/calendar",
+    languages: { "en": "https://friendsofbarca.com/calendar", "es": "https://friendsofbarca.com/es/calendar", "x-default": "https://friendsofbarca.com/calendar" },
   },
 };
 
@@ -33,5 +37,26 @@ export default async function CalendarPage() {
     date: m.date.toISOString(),
   }));
 
-  return <MatchCalendarClient matches={serialized} />;
+  const jsonLd = eventsListJsonLd(
+    matches.map(m => ({
+      opponent: m.opponent,
+      date: m.date.toISOString(),
+      time: m.time,
+      competition: m.competition,
+      venue: m.venue,
+    }))
+  );
+
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", url: "https://friendsofbarca.com" },
+    { name: "Match Calendar", url: "https://friendsofbarca.com/calendar" },
+  ]);
+
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} />
+      <MatchCalendarClient matches={serialized} />
+    </>
+  );
 }

@@ -27,6 +27,9 @@ interface Pagination {
   totalPages: number;
 }
 
+type SortField = "title" | "category" | "matchResult" | "status" | "publishedAt";
+type SortOrder = "asc" | "desc";
+
 export default function AdminNewsPage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
@@ -35,6 +38,8 @@ export default function AdminNewsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortField>("publishedAt");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const debounceRef = useRef<NodeJS.Timeout>(null);
 
   // Slide-over state
@@ -77,6 +82,16 @@ export default function AdminNewsPage() {
     setPage(1);
   }, [category]);
 
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortOrder(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder(field === "publishedAt" ? "desc" : "asc");
+    }
+    setPage(1);
+  };
+
   const fetchArticles = useCallback(async () => {
     setLoading(true);
     try {
@@ -85,6 +100,8 @@ export default function AdminNewsPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       params.set("page", String(page));
       params.set("pageSize", "20");
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
       const res = await fetch(`/api/admin/news?${params}`);
       const data = await res.json();
       setArticles(data.articles || []);
@@ -93,7 +110,7 @@ export default function AdminNewsPage() {
       setFeedback({ type: "error", message: "Failed to load articles" });
     }
     setLoading(false);
-  }, [category, debouncedSearch, page]);
+  }, [category, debouncedSearch, page, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchArticles();
@@ -352,11 +369,28 @@ export default function AdminNewsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
-                <th className="px-4 py-3 font-medium text-gray-500">Title</th>
-                <th className="px-4 py-3 font-medium text-gray-500 w-28">Category</th>
-                <th className="px-4 py-3 font-medium text-gray-500 w-28">Result</th>
-                <th className="px-4 py-3 font-medium text-gray-500 w-24">Status</th>
-                <th className="px-4 py-3 font-medium text-gray-500 w-28">Date</th>
+                {([
+                  { field: "title" as SortField, label: "Title", width: "" },
+                  { field: "category" as SortField, label: "Category", width: "w-28" },
+                  { field: "matchResult" as SortField, label: "Result", width: "w-28" },
+                  { field: "status" as SortField, label: "Status", width: "w-24" },
+                  { field: "publishedAt" as SortField, label: "Date", width: "w-28" },
+                ]).map(col => (
+                  <th
+                    key={col.field}
+                    className={`px-4 py-3 font-medium text-gray-500 ${col.width} cursor-pointer select-none hover:text-gray-700 transition-colors`}
+                    onClick={() => handleSort(col.field)}
+                  >
+                    <div className="flex items-center gap-1">
+                      {col.label}
+                      {sortBy === col.field ? (
+                        <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span>
+                      ) : (
+                        <span className="text-gray-300">{"\u25B2\u25BC"}</span>
+                      )}
+                    </div>
+                  </th>
+                ))}
                 <th className="px-4 py-3 font-medium text-gray-500 w-20">Actions</th>
               </tr>
             </thead>

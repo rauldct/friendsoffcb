@@ -11,6 +11,7 @@ model MatchPackage {
   id              String   @id @default(uuid())
   slug            String   @unique
   matchTitle      String
+  matchTitleEs    String?
   competition     String
   matchDate       DateTime
   matchTime       String
@@ -18,13 +19,18 @@ model MatchPackage {
   opponentLogo    String   @default("")
   heroImage       String   @default("")
   description     String   @db.Text
+  descriptionEs   String?  @db.Text
   tickets         Json
   hotels          Json
   activities      Json
   tips            String[]
+  tipsEs          String[]
   meetupInfo      String?
+  meetupInfoEs    String?
   metaTitle       String
+  metaTitleEs     String?
   metaDescription String
+  metaDescriptionEs String?
   status          String   @default("upcoming")
   featured        Boolean  @default(false)
   stubhubEventId  String?
@@ -38,14 +44,19 @@ model BlogPost {
   id                 String   @id @default(uuid())
   slug               String   @unique
   title              String
+  titleEs            String?
   excerpt            String
+  excerptEs          String?
   content            String   @db.Text
+  contentEs          String?  @db.Text
   coverImage         String   @default("")
   category           String
   tags               String[]
   author             String   @default("Friends of Barça")
   metaTitle          String
+  metaTitleEs        String?
   metaDescription    String
+  metaDescriptionEs  String?
   canonicalUrl       String?
   relatedPackageSlug String?
   publishedAt        DateTime @default(now())
@@ -94,6 +105,7 @@ model Setting {
 model CompetitionData {
   id                String   @id // "la-liga", "champions-league", "copa-del-rey"
   name              String
+  active            Boolean  @default(true)
   season            String   @default("2025-2026")
   emblemUrl         String   @default("")
   standings         Json     @default("[]")
@@ -107,9 +119,14 @@ model CompetitionData {
   barcaGoalsAgainst Int      @default(0)
   nextMatches       Json     @default("[]")
   aiPrediction      String   @db.Text @default("")
+  aiPredictionEs    String   @db.Text @default("")
   aiExplanation     String   @db.Text @default("")
+  aiExplanationEs   String   @db.Text @default("")
   seasonForecast    String   @db.Text @default("")
+  seasonForecastEs  String   @db.Text @default("")
   seasonExplanation String   @db.Text @default("")
+  seasonExplanationEs String @db.Text @default("")
+  aiStructuredData  Json     @default("{}")
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 }
@@ -117,9 +134,13 @@ model CompetitionData {
 model NewsArticle {
   id              String   @id @default(uuid())
   slug            String   @unique
+  oldSlug         String?
   title           String
+  titleEs         String?
   excerpt         String
+  excerptEs       String?
   content         String   @db.Text
+  contentEs       String?  @db.Text
   coverImage      String   @default("")
   category        String   // "digest" | "chronicle"
   sources         Json     @default("[]")
@@ -127,7 +148,9 @@ model NewsArticle {
   matchResult     String?
   author          String   @default("Friends of Barça AI")
   metaTitle       String   @default("")
+  metaTitleEs     String?
   metaDescription String   @default("")
+  metaDescriptionEs String?
   publishedAt     DateTime @default(now())
   updatedAt       DateTime @updatedAt
   status          String   @default("published")
@@ -175,6 +198,13 @@ model Penya {
   enrichmentStatus String   @default("pending") // "pending" | "enriched" | "manual" | "failed"
   detailsUpdatedAt DateTime?
 
+  // Quality & tracking
+  qualityScore     Int?          // 0-100, calculated from field completeness
+  sourcesUsed      Json?         // ["Brave Search", "Perplexity", "Claude", ...]
+  lastEnrichedAt   DateTime?     // When AI enrichment last ran (separate from manual edits)
+  lastScrapedAt    DateTime?     // When website was last scraped
+  enrichmentError  String? @db.Text  // Last error message if enrichment failed
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -218,6 +248,18 @@ model NewsletterOpen {
 
   @@unique([newsletterId, subscriberId])
   @@index([subscriberId])
+}
+
+model Faq {
+  id        String   @id @default(uuid())
+  question  String
+  questionEs String?
+  answer    String   @db.Text
+  answerEs  String?  @db.Text
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Feedback {
@@ -264,4 +306,62 @@ model PhotoReport {
   status      String   @default("new")
   createdAt   DateTime @default(now())
   @@index([photoId])
+}
+
+// ============== BARCA AI CHAT ==============
+
+model ChatConversation {
+  id        String        @id @default(uuid())
+  sessionId String        @unique
+  metadata  Json          @default("{}")
+  expiresAt DateTime
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id             String           @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String           // "user" | "assistant"
+  content        String           @db.Text
+  intent         String?
+  sources        Json?
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId])
+}
+
+model Waitlist {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  country    String?
+  ip         String?
+  userAgent  String?
+  geoCity    String?
+  geoRegion  String?
+  geoCountry String?
+  source     String   @default("barcaai")
+  createdAt  DateTime @default(now())
+}
+
+model PenyaFederation {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  abbreviation  String?
+  regions       String[]
+  website       String?
+  email         String?
+  phone         String?
+  address       String?
+  president     String?
+  description   String?  @db.Text
+  memberCount   Int?
+  zone          String?
+  socialMedia   Json?
+  scrapedData   Json?
+  lastScrapedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

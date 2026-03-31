@@ -2,12 +2,17 @@
 import Link from "next/link";
 import { useState } from "react";
 import FeedbackModal from "./FeedbackModal";
+import { useLanguage, useLocalePath } from "@/lib/LanguageContext";
 
 export default function Footer() {
   const [email, setEmail] = useState("");
-  const [language, setLanguage] = useState("en");
+  const [hp, setHp] = useState(""); // honeypot
+  const [formTs] = useState(() => Date.now()); // form load timestamp
   const [status, setStatus] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
+  const { locale, t } = useLanguage();
+  const lp = useLocalePath();
+  const [language, setLanguage] = useState<string>(locale);
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,12 +20,24 @@ export default function Footer() {
       const res = await fetch("/api/subscribers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, language, source: "footer" }),
+        body: JSON.stringify({ email, language, source: "footer", _hp: hp, _ts: formTs }),
       });
       if (res.ok) { setStatus("success"); setEmail(""); }
       else setStatus("error");
     } catch { setStatus("error"); }
   };
+
+  const quickLinks = [
+    { href: lp("/"), label: t("nav.home") },
+    { href: lp("/competitions"), label: t("nav.competitions") },
+    { href: lp("/packages"), label: t("nav.packages") },
+    { href: lp("/news"), label: t("nav.news") },
+    { href: lp("/blog"), label: t("nav.blog") },
+    { href: lp("/guides"), label: t("nav.guides") },
+    { href: lp("/about"), label: t("nav.about") },
+    { href: lp("/faq"), label: "FAQ" },
+    { href: lp("/contact"), label: t("misc.contact") },
+  ];
 
   return (
     <footer className="bg-[#1A1A2E] text-white">
@@ -28,36 +45,33 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
           <div>
             <h3 className="font-heading font-bold text-lg mb-4">&#9917; Friends of <span className="text-[#EDBB00]">Barça</span></h3>
-            <p className="text-gray-400 text-sm mb-4">Your ultimate guide to experiencing FC Barcelona matches at the Spotify Camp Nou. Tickets, hotels, tours & insider tips.</p>
-            <div className="flex gap-4">
-              <a href="#" aria-label="Twitter" className="text-gray-400 hover:text-white"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
-              <a href="#" aria-label="Instagram" className="text-gray-400 hover:text-white"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg></a>
-              <a href="#" aria-label="TikTok" className="text-gray-400 hover:text-white"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.75a8.18 8.18 0 004.76 1.52V6.84a4.84 4.84 0 01-1-.15z"/></svg></a>
-            </div>
+            <p className="text-gray-400 text-sm mb-4">{t("footer.desc")}</p>
           </div>
           <div>
-            <h4 className="font-heading font-bold mb-4">Quick Links</h4>
+            <h4 className="font-heading font-bold mb-4">{t("footer.quickLinks")}</h4>
             <ul className="space-y-2 text-sm text-gray-400">
-              {[{href:"/",label:"Home"},{href:"/competitions",label:"Competitions"},{href:"/packages",label:"Match Packages"},{href:"/news",label:"Latest News"},{href:"/blog",label:"Blog"},{href:"/guides",label:"Travel Guides"},{href:"/about",label:"About Us"},{href:"/contact",label:"Contact"}].map(l=>(
+              {quickLinks.map(l=>(
                 <li key={l.href}><Link href={l.href} className="hover:text-white transition-colors">{l.label}</Link></li>
               ))}
             </ul>
           </div>
           <div>
-            <h4 className="font-heading font-bold mb-4">Popular Guides</h4>
+            <h4 className="font-heading font-bold mb-4">{t("footer.popularGuides")}</h4>
             <ul className="space-y-2 text-sm text-gray-400">
-              <li><Link href="/guides/first-time-camp-nou" className="hover:text-white">First Time at Camp Nou</Link></li>
-              <li><Link href="/guides/best-bars-camp-nou" className="hover:text-white">Best Bars Near Camp Nou</Link></li>
-              <li><Link href="/guides/getting-to-camp-nou" className="hover:text-white">Getting to Camp Nou</Link></li>
-              <li><Link href="/guides/barca-ticket-prices" className="hover:text-white">Barça Ticket Prices</Link></li>
+              <li><Link href="/guides/first-time-camp-nou" className="hover:text-white">{t("footer.guide1")}</Link></li>
+              <li><Link href="/guides/best-bars-camp-nou" className="hover:text-white">{t("footer.guide2")}</Link></li>
+              <li><Link href="/guides/getting-to-camp-nou" className="hover:text-white">{t("footer.guide3")}</Link></li>
+              <li><Link href="/guides/barca-ticket-prices" className="hover:text-white">{t("footer.guide4")}</Link></li>
             </ul>
           </div>
           <div>
-            <h4 className="font-heading font-bold mb-4">Newsletter</h4>
-            <p className="text-sm text-gray-400 mb-3">Get exclusive deals & matchday tips.</p>
+            <h4 className="font-heading font-bold mb-4">{t("footer.newsletter")}</h4>
+            <p className="text-sm text-gray-400 mb-3">{t("footer.newsletterDesc")}</p>
             <form onSubmit={handleSubscribe} className="space-y-2">
+              {/* Honeypot - hidden from humans, visible to bots */}
+              <input type="text" name="website" value={hp} onChange={e=>setHp(e.target.value)} autoComplete="off" tabIndex={-1} aria-hidden="true" style={{position:"absolute",left:"-9999px",opacity:0,height:0,width:0}} />
               <div className="flex gap-2">
-                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="Your email" className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#EDBB00]"/>
+                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder={t("form.yourEmail")} className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#EDBB00]"/>
                 <select value={language} onChange={e=>setLanguage(e.target.value)} className="px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-sm text-white focus:outline-none focus:border-[#EDBB00] appearance-none cursor-pointer" title="Newsletter language">
                   <option value="en" className="bg-[#1A1A2E]">EN</option>
                   <option value="es" className="bg-[#1A1A2E]">ES</option>
@@ -65,30 +79,30 @@ export default function Footer() {
                 <button type="submit" className="bg-[#EDBB00] text-[#1A1A2E] px-4 py-2 rounded-lg font-bold text-sm hover:bg-yellow-500">Go</button>
               </div>
             </form>
-            {status==="success"&&<p className="text-green-400 text-xs mt-2">Subscribed!</p>}
-            {status==="error"&&<p className="text-red-400 text-xs mt-2">Something went wrong.</p>}
+            {status==="success"&&<p className="text-green-400 text-xs mt-2">{t("footer.subscribed")}</p>}
+            {status==="error"&&<p className="text-red-400 text-xs mt-2">{t("form.error")}</p>}
           </div>
         </div>
       </div>
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
-            <p>&copy; 2026 Friends of Barça. All rights reserved.</p>
+            <p>{t("footer.rights")}</p>
             <div className="flex gap-4 items-center">
               <button
                 onClick={() => setShowFeedback(true)}
                 className="text-[#EDBB00] hover:text-yellow-300 font-medium transition-colors"
               >
-                Send Feedback
+                {t("footer.sendFeedback")}
               </button>
-              <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
-              <Link href="/terms" className="hover:text-white">Terms of Use</Link>
-              <Link href="/cookies" className="hover:text-white">Cookie Policy</Link>
+              <Link href="/privacy" className="hover:text-white">{t("footer.privacyPolicy")}</Link>
+              <Link href="/terms" className="hover:text-white">{t("footer.termsOfUse")}</Link>
+              <Link href="/cookies" className="hover:text-white">{t("footer.cookiePolicy")}</Link>
             </div>
           </div>
           <div className="mt-4 text-xs text-gray-600 space-y-1">
-            <p>Friends of Barça is not affiliated with FC Barcelona. All trademarks belong to their respective owners.</p>
-            <p>This site contains affiliate links. We may earn a commission at no extra cost to you.</p>
+            <p>{t("footer.disclaimer")}</p>
+            <p>{t("footer.affiliate")}</p>
           </div>
         </div>
       </div>

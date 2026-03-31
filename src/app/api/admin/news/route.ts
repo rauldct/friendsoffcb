@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { slugify } from "@/lib/slugify";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export async function GET(request: NextRequest) {
   const pageSize = Math.min(50, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
   const category = searchParams.get("category");
   const search = searchParams.get("search");
+  const sortBy = searchParams.get("sortBy") || "publishedAt";
+  const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
   const where: Record<string, unknown> = {};
   if (category && category !== "all") where.category = category;
@@ -20,10 +23,13 @@ export async function GET(request: NextRequest) {
     ];
   }
 
+  const allowedSortFields = ["title", "category", "matchResult", "status", "publishedAt"];
+  const orderField = allowedSortFields.includes(sortBy) ? sortBy : "publishedAt";
+
   const [articles, total] = await Promise.all([
     prisma.newsArticle.findMany({
       where,
-      orderBy: { publishedAt: "desc" },
+      orderBy: { [orderField]: sortOrder },
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
@@ -63,11 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate slug from title
-    const slug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80);
+    const slug = slugify(title);
 
     // Ensure unique slug
     const existing = await prisma.newsArticle.findUnique({ where: { slug } });

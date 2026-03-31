@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 interface Props {
   matchTitle: string;
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function StickyCtaBar({ matchTitle, priceFrom, ctaUrl }: Props) {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -23,9 +25,9 @@ export default function StickyCtaBar({ matchTitle, priceFrom, ctaUrl }: Props) {
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="text-white">
           <p className="font-heading font-bold text-sm sm:text-base">{matchTitle}</p>
-          <p className="text-xs text-gray-400">From €{priceFrom}</p>
+          <p className="text-xs text-gray-400">{t("pkg.fromPrice")} €{priceFrom}</p>
         </div>
-        <a href={ctaUrl} className="btn-gold text-sm py-2 px-6">Book Now</a>
+        <a href={ctaUrl} className="btn-gold text-sm py-2 px-6">{t("pkg.bookNow")}</a>
       </div>
     </div>
   );

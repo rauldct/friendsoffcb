@@ -31,6 +31,10 @@ interface Penya {
   scrapedContent: unknown;
   enrichmentStatus: string;
   detailsUpdatedAt: string | null;
+  qualityScore: number | null;
+  sourcesUsed: string[] | null;
+  lastEnrichedAt: string | null;
+  enrichmentError: string | null;
 }
 
 interface Counts {
@@ -47,6 +51,14 @@ interface Pagination {
   totalPages: number;
 }
 
+interface EnrichmentStats {
+  enriched: number;
+  pending: number;
+  failed: number;
+  manual: number;
+  avgQuality: number;
+}
+
 interface BulkLogEntry {
   name: string;
   city: string;
@@ -58,8 +70,10 @@ interface BulkLogEntry {
 export default function AdminPenyesPage() {
   const [penyes, setPenyes] = useState<Penya[]>([]);
   const [counts, setCounts] = useState<Counts>({ total: 0, cataluna: 0, spain: 0, world: 0 });
+  const [enrichmentStats, setEnrichmentStats] = useState<EnrichmentStats>({ enriched: 0, pending: 0, failed: 0, manual: 0, avgQuality: 0 });
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 25, totalFiltered: 0, totalPages: 0 });
   const [region, setRegion] = useState("all");
+  const [quality, setQuality] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -68,6 +82,8 @@ export default function AdminPenyesPage() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [sortBy, setSortBy] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const debounceRef = useRef<NodeJS.Timeout>(null);
 
   // Slide-over state
@@ -106,23 +122,27 @@ export default function AdminPenyesPage() {
   }, [search]);
 
   useEffect(() => { setPage(1); }, [region]);
+  useEffect(() => { setPage(1); }, [quality]);
   useEffect(() => { setPage(1); }, [pageSize]);
 
   const fetchPenyes = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (region !== "all") params.set("region", region);
+    if (quality !== "all") params.set("quality", quality);
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (sortBy) { params.set("sortBy", sortBy); params.set("sortDir", sortDir); }
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
     const res = await fetch(`/api/admin/penyes?${params}`);
     const data = await res.json();
     setPenyes(data.penyes);
     setCounts(data.counts);
+    setEnrichmentStats(data.enrichmentStats || { enriched: 0, pending: 0, failed: 0, manual: 0, avgQuality: 0 });
     setPagination(data.pagination);
     setLastSync(data.lastSync);
     setLoading(false);
-  }, [region, debouncedSearch, page, pageSize]);
+  }, [region, quality, debouncedSearch, page, pageSize, sortBy, sortDir]);
 
   useEffect(() => { fetchPenyes(); }, [fetchPenyes]);
 
@@ -396,6 +416,21 @@ export default function AdminPenyesPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const qualityBadge = (score: number | null) => {
+    if (score === null || score === undefined) return { color: "bg-gray-100 text-gray-400", label: "-" };
+    if (score <= 30) return { color: "bg-red-100 text-red-700", label: String(score) };
+    if (score <= 60) return { color: "bg-amber-100 text-amber-700", label: String(score) };
+    return { color: "bg-green-100 text-green-700", label: String(score) };
+  };
+
+  const exportCsvUrl = () => {
+    const params = new URLSearchParams();
+    if (region !== "all") params.set("region", region);
+    if (quality !== "all") params.set("quality", quality);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    return `/api/admin/penyes/export?${params}`;
+  };
+
   const bulkSuccessCount = bulkLogs.filter(l => l.status === "success").length;
   const bulkErrorCount = bulkLogs.filter(l => l.status === "error").length;
 
@@ -411,6 +446,13 @@ export default function AdminPenyesPage() {
               Last sync: {formatDate(lastSync)}
             </span>
           )}
+          <a
+            href={exportCsvUrl()}
+            download
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+          >
+            Export CSV
+          </a>
           <button
             onClick={() => setShowBulkPrompt(true)}
             disabled={bulkRunning}
@@ -466,16 +508,20 @@ export default function AdminPenyesPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
           { label: "Total", value: counts.total, color: "bg-gray-100" },
           { label: "Catalunya", value: counts.cataluna, color: "bg-red-50" },
           { label: "Spain", value: counts.spain, color: "bg-yellow-50" },
           { label: "World", value: counts.world, color: "bg-blue-50" },
+          { label: "Enriched", value: enrichmentStats.enriched, color: "bg-green-50" },
+          { label: "Pending", value: enrichmentStats.pending, color: "bg-gray-50" },
+          { label: "Failed", value: enrichmentStats.failed, color: "bg-red-50" },
+          { label: "Avg Quality", value: enrichmentStats.avgQuality, color: "bg-purple-50" },
         ].map(s => (
-          <div key={s.label} className={`${s.color} rounded-xl p-4 text-center`}>
-            <div className="text-2xl font-bold text-[#1A1A2E]">{s.value}</div>
-            <div className="text-xs text-gray-500 mt-1">{s.label}</div>
+          <div key={s.label} className={`${s.color} rounded-xl p-3 text-center`}>
+            <div className="text-xl font-bold text-[#1A1A2E]">{s.value}</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">{s.label}</div>
           </div>
         ))}
       </div>
@@ -491,6 +537,17 @@ export default function AdminPenyesPage() {
           <option value="cataluna">Catalunya</option>
           <option value="spain">Spain</option>
           <option value="world">World</option>
+        </select>
+        <select
+          value={quality}
+          onChange={e => setQuality(e.target.value)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+        >
+          <option value="all">All quality</option>
+          <option value="high">High (61-100)</option>
+          <option value="medium">Medium (31-60)</option>
+          <option value="low">Low (0-30)</option>
+          <option value="none">Not scored</option>
         </select>
         <input
           type="text"
@@ -517,42 +574,76 @@ export default function AdminPenyesPage() {
             <thead className="bg-gray-50 text-left">
               <tr>
                 <th className="px-3 py-3 font-medium text-gray-500 w-12"></th>
-                <th className="px-4 py-3 font-medium text-gray-500">Name</th>
-                <th className="px-4 py-3 font-medium text-gray-500">City</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Province</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Country</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Region</th>
+                {([
+                  { key: "name", label: "Name" },
+                  { key: "city", label: "City" },
+                  { key: "province", label: "Province" },
+                  { key: "country", label: "Country" },
+                  { key: "region", label: "Region" },
+                  { key: "qualityScore", label: "Quality" },
+                ] as const).map(col => (
+                  <th
+                    key={col.key}
+                    className={`px-4 py-3 font-medium cursor-pointer select-none hover:text-[#004D98] transition-colors ${sortBy === col.key ? "text-[#004D98]" : "text-gray-500"} ${col.key === "qualityScore" ? "w-20" : ""}`}
+                    onClick={() => {
+                      if (sortBy === col.key) {
+                        setSortDir(d => d === "asc" ? "desc" : "asc");
+                      } else {
+                        setSortBy(col.key);
+                        setSortDir("asc");
+                      }
+                      setPage(1);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {sortBy === col.key && (
+                        <svg className="w-3 h-3" viewBox="0 0 12 12" fill="currentColor">
+                          {sortDir === "asc" ? <path d="M6 2L10 8H2L6 2Z"/> : <path d="M6 10L2 4H10L6 10Z"/>}
+                        </svg>
+                      )}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Loading...</td></tr>
               ) : penyes.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">No penyes found. Click &quot;Sync from FCB&quot; to scrape data.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No penyes found. Click &quot;Sync from FCB&quot; to scrape data.</td></tr>
               ) : (
-                penyes.map(p => (
-                  <tr
-                    key={p.id}
-                    className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => openSlideOver(p)}
-                  >
-                    <td className="px-3 py-3 text-center">
-                      <span
-                        className={`w-2.5 h-2.5 rounded-full ${statusDot(p.enrichmentStatus)} inline-block`}
-                        title={statusLabel(p.enrichmentStatus)}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-[#1A1A2E]">{p.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.city}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.province || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.country}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${regionBadge(p.region)}`}>
-                        {regionLabel(p.region)}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                penyes.map(p => {
+                  const qb = qualityBadge(p.qualityScore);
+                  return (
+                    <tr
+                      key={p.id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => openSlideOver(p)}
+                    >
+                      <td className="px-3 py-3 text-center">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${statusDot(p.enrichmentStatus)} inline-block`}
+                          title={statusLabel(p.enrichmentStatus)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-medium text-[#1A1A2E]">{p.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.city}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.province || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.country}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${regionBadge(p.region)}`}>
+                          {regionLabel(p.region)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${qb.color}`}>
+                          {qb.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -855,8 +946,41 @@ export default function AdminPenyesPage() {
               </button>
             </div>
 
-            {/* AI Enrich button */}
-            <div className="px-6 py-3 border-b bg-gray-50">
+            {/* Quality Score + AI Enrich */}
+            <div className="px-6 py-3 border-b bg-gray-50 space-y-3">
+              {selectedPenya.qualityScore !== null && selectedPenya.qualityScore !== undefined && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-500">Quality Score</span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${qualityBadge(selectedPenya.qualityScore).color}`}>
+                      {selectedPenya.qualityScore}/100
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        selectedPenya.qualityScore <= 30 ? "bg-red-500" :
+                        selectedPenya.qualityScore <= 60 ? "bg-amber-500" : "bg-green-500"
+                      }`}
+                      style={{ width: `${selectedPenya.qualityScore}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {selectedPenya.sourcesUsed && selectedPenya.sourcesUsed.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedPenya.sourcesUsed.map((s, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {selectedPenya.enrichmentError && (
+                <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                  Error: {selectedPenya.enrichmentError}
+                </div>
+              )}
               <button
                 onClick={() => handleEnrich(selectedPenya.id)}
                 disabled={enriching === selectedPenya.id}

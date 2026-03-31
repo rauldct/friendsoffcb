@@ -68,7 +68,7 @@ function isScrapableUrl(url: string): boolean {
 
 // ============== WEB SCRAPING ==============
 
-interface ScrapedPage {
+export interface ScrapedPage {
   url: string;
   title: string;
   description: string;
@@ -78,14 +78,14 @@ interface ScrapedPage {
   bodyText: string;
 }
 
-async function scrapePage(url: string): Promise<ScrapedPage | null> {
+export async function scrapePage(url: string): Promise<ScrapedPage | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; FriendsOfBarca/1.0; +https://friendsofbarca.com)",
+        "User-Agent": "CuleBot/1.0 (https://friendsofbarca.com; rauloasys@gmail.com)",
         Accept: "text/html,application/xhtml+xml",
       },
       signal: controller.signal,
@@ -366,17 +366,14 @@ function formatScrapedData(pages: ScrapedPage[]): SourceData | null {
 
 const getBraveApiKey = () => getSettingKey("BRAVE_API_KEY");
 
-async function searchBrave(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null } | null> {
+async function searchBrave(name: string, city: string, country: string, region: string = "spain"): Promise<{ urls: string[]; source: SourceData | null } | null> {
   const apiKey = await getBraveApiKey();
   if (!apiKey) {
     console.log("[Enrichment] Brave API key not configured, falling back to DuckDuckGo");
     return null;
   }
 
-  const queries = [
-    `"${name}" ${city} peña barcelonista`,
-    `"${name}" ${city} FC Barcelona`,
-  ];
+  const queries = buildSearchQueries(name, city, country, region).slice(0, 2);
 
   const allUrls: string[] = [];
   const allSnippets: string[] = [];
@@ -439,11 +436,8 @@ async function searchBrave(name: string, city: string, country: string): Promise
   };
 }
 
-async function searchDuckDuckGo(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null }> {
-  const queries = [
-    `"${name}" ${city} peña barcelonista`,
-    `"${name}" ${city} FC Barcelona supporters club`,
-  ];
+async function searchDuckDuckGo(name: string, city: string, country: string, region: string = "spain"): Promise<{ urls: string[]; source: SourceData | null }> {
+  const queries = buildSearchQueries(name, city, country, region).slice(0, 2);
 
   const allUrls: string[] = [];
   const allSnippets: string[] = [];
@@ -505,11 +499,111 @@ async function searchDuckDuckGo(name: string, city: string, country: string): Pr
   };
 }
 
-async function searchWeb(name: string, city: string, country: string): Promise<{ urls: string[]; source: SourceData | null }> {
-  // Try Brave Search first (best results, full web), fallback to DuckDuckGo
-  const braveResult = await searchBrave(name, city, country);
-  if (braveResult) return braveResult;
-  return searchDuckDuckGo(name, city, country);
+async function searchGoogle(name: string, city: string, country: string, region: string = "spain"): Promise<{ urls: string[]; source: SourceData | null }> {
+  const queries = buildSearchQueries(name, city, country, region).slice(0, 2);
+
+  const allUrls: string[] = [];
+  const allSnippets: string[] = [];
+
+  for (const query of queries) {
+    try {
+      const encoded = encodeURIComponent(query);
+      const res = await fetch(`https://www.google.com/search?q=${encoded}&hl=es&num=10`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html",
+          "Accept-Language": "es,en;q=0.9",
+        },
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        console.log(`[Enrichment] Google search HTTP ${res.status}, skipping`);
+        continue;
+      }
+
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      // Google results in <a> tags with /url?q= or direct href
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href") || "";
+        let actualUrl = "";
+
+        if (href.startsWith("/url?")) {
+          try {
+            const u = new URL(href, "https://www.google.com");
+            actualUrl = u.searchParams.get("q") || "";
+          } catch { /* skip */ }
+        } else if (href.startsWith("http") && !href.includes("google.com") && !href.includes("googleapis.com")) {
+          actualUrl = href;
+        }
+
+        if (actualUrl && actualUrl.startsWith("http") && isScrapableUrl(actualUrl)) {
+          allUrls.push(actualUrl.split("&")[0]);
+        }
+      });
+
+      // Extract snippets from result blocks
+      $("div[data-sokoban-container], div.g, div[data-hveid]").each((_, el) => {
+        const title = $(el).find("h3").first().text().trim();
+        const snippet = $(el).find("span, div.VwiC3b, div[data-content-feature]").first().text().trim();
+        const link = $(el).find("a[href^='http']").first().attr("href") || "";
+        if (title && snippet && link) {
+          allSnippets.push(`${title}: ${snippet.slice(0, 300)} (${link.split("&")[0]})`);
+        }
+      });
+
+      await new Promise(r => setTimeout(r, 1500)); // Longer delay for Google
+    } catch (err) {
+      console.error(`[Enrichment] Google search error:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  const uniqueUrls = [...new Set(allUrls)].slice(0, 8);
+  console.log(`[Enrichment] ${name}: Google search found ${uniqueUrls.length} URLs, ${allSnippets.length} snippets`);
+
+  if (allSnippets.length === 0 && uniqueUrls.length === 0) return { urls: [], source: null };
+
+  return {
+    urls: uniqueUrls,
+    source: allSnippets.length > 0
+      ? { source: "Google Search", snippets: allSnippets.slice(0, 15).join("\n\n") }
+      : null,
+  };
+}
+
+async function searchWeb(name: string, city: string, country: string, region: string = "spain"): Promise<{ urls: string[]; source: SourceData | null }> {
+  const allUrls: string[] = [];
+  const allSources: SourceData[] = [];
+
+  // Try Brave Search first (best structured results)
+  const braveResult = await searchBrave(name, city, country, region);
+  if (braveResult) {
+    allUrls.push(...braveResult.urls);
+    if (braveResult.source) allSources.push(braveResult.source);
+  }
+
+  // Google Search (always try — different results complement Brave)
+  const googleResult = await searchGoogle(name, city, country, region);
+  allUrls.push(...googleResult.urls);
+  if (googleResult.source) allSources.push(googleResult.source);
+
+  // DuckDuckGo as fallback only when we have very few URLs
+  if (allUrls.length < 3) {
+    const ddgResult = await searchDuckDuckGo(name, city, country, region);
+    allUrls.push(...ddgResult.urls);
+    if (ddgResult.source) allSources.push(ddgResult.source);
+  }
+
+  const uniqueUrls = [...new Set(allUrls)].slice(0, 10);
+
+  // Merge all snippets into one source
+  const mergedSource: SourceData | null = allSources.length > 0
+    ? { source: "Web Search (Brave + Google)", snippets: allSources.map(s => `--- ${s.source} ---\n${s.snippets}`).join("\n\n") }
+    : null;
+
+  return { urls: uniqueUrls, source: mergedSource };
 }
 
 // ============== STEP 1: PERPLEXITY SONAR ==============
@@ -579,6 +673,105 @@ IMPORTANT: Include the website URL if you find one. Provide only verified data w
     if (!content) return null;
     return { source: "Grok (xAI)", snippets: content };
   } catch (err) { console.error("[Enrichment] Grok search error:", err); return null; }
+}
+
+// ============== CONTENT-BASED WEBSITE VALIDATION ==============
+
+/**
+ * Pre-validates a scraped page to check if it's likely the peña's own website.
+ * Returns a score 0-100 and reason. This runs BEFORE Claude for fast filtering.
+ */
+function preValidateWebsite(page: ScrapedPage, penyaName: string, city: string): { score: number; reason: string } {
+  const titleLower = (page.title || "").toLowerCase();
+  const descLower = (page.description || "").toLowerCase();
+  const bodyLower = (page.bodyText || "").toLowerCase();
+  const allText = `${titleLower} ${descLower} ${bodyLower}`;
+  const urlLower = page.url.toLowerCase();
+
+  const nameLower = penyaName.toLowerCase();
+  const cityLower = city.toLowerCase();
+
+  // Normalize accents for fuzzy matching
+  const normalize = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const nameNorm = normalize(penyaName);
+  const allTextNorm = normalize(allText);
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  // ---- POSITIVE signals ----
+
+  // Peña name appears in title (strong signal)
+  if (titleLower.includes(nameLower) || normalize(page.title).includes(nameNorm)) {
+    score += 35;
+    reasons.push(`Name "${penyaName}" found in page title`);
+  }
+  // Peña name in body content
+  else if (allTextNorm.includes(nameNorm)) {
+    score += 20;
+    reasons.push(`Name found in page content`);
+  }
+
+  // City mentioned
+  if (allTextNorm.includes(normalize(city))) {
+    score += 10;
+    reasons.push(`City "${city}" found in content`);
+  }
+
+  // Barcelona/Barça reference (expected for a peña)
+  if (allText.includes("barcelona") || allText.includes("barça") || allText.includes("barca") || allText.includes("blaugrana")) {
+    score += 10;
+    reasons.push("FC Barcelona references found");
+  }
+
+  // Peña/penya keywords
+  if (allText.includes("peña") || allText.includes("penya") || allText.includes("penyes") || allText.includes("supporter") || allText.includes("fan club")) {
+    score += 10;
+    reasons.push("Peña/supporter club keywords found");
+  }
+
+  // Contact info present (email, phone — suggests it's their own site)
+  if (page.emails.length > 0) {
+    score += 5;
+    reasons.push("Contact email found");
+  }
+  if (page.phones.length > 0) {
+    score += 5;
+    reasons.push("Phone number found");
+  }
+
+  // Social media links (suggests it's the org's own site)
+  const hasSocial = page.socialLinks.facebook || page.socialLinks.instagram || page.socialLinks.twitter;
+  if (hasSocial) {
+    score += 5;
+    reasons.push("Social media links present");
+  }
+
+  // ---- NEGATIVE signals ----
+
+  // News/media site (not the peña's own website)
+  const newsKeywords = ["periódico", "diario", "noticias", "news", "article", "noticia", "periodismo"];
+  const isNewsLikely = newsKeywords.some(k => titleLower.includes(k)) ||
+    /\b(marca|sport|mundodeportivo|as\.com|cope|efe|reuters|elpais|lavanguardia)\b/.test(urlLower);
+  if (isNewsLikely) {
+    score -= 30;
+    reasons.push("NEGATIVE: Appears to be a news/media site");
+  }
+
+  // Directory listing
+  const directoryKeywords = ["directorio", "directory", "listado", "listing", "páginas amarillas", "infobel"];
+  if (directoryKeywords.some(k => allText.includes(k) || urlLower.includes(k.replace(" ", "")))) {
+    score -= 20;
+    reasons.push("NEGATIVE: Appears to be a directory listing");
+  }
+
+  // Municipal/government site mentioning the peña briefly
+  if (urlLower.includes(".gob.") || urlLower.includes(".gov.") || urlLower.includes("ayuntamiento") || urlLower.includes("ajuntament")) {
+    score -= 15;
+    reasons.push("NEGATIVE: Government/municipal website");
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), reason: reasons.join("; ") };
 }
 
 // ============== STEP 4: CLAUDE SYNTHESIS + WEBSITE VALIDATION ==============
@@ -677,6 +870,84 @@ Confidence:
   return JSON.parse(stripJsonBlock(text));
 }
 
+// ============== QUALITY SCORE ==============
+
+interface QualityInput {
+  website: string | null;
+  websiteValidation: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  socialMedia: { facebook?: string; twitter?: string; instagram?: string; tiktok?: string } | null;
+  description: string | null;
+  president: string | null;
+  foundedYear: number | null;
+  memberCount: number | null;
+  confidence: string;
+}
+
+export function calculateQualityScore(data: QualityInput): number {
+  let score = 0;
+  // Website validated (25 pts)
+  if (data.website && data.websiteValidation) score += 25;
+  // Email (10 pts)
+  if (data.email) score += 10;
+  // Phone (10 pts)
+  if (data.phone) score += 10;
+  // Address (10 pts)
+  if (data.address) score += 10;
+  // Social media - at least 1 link (10 pts)
+  if (data.socialMedia) {
+    const sm = data.socialMedia;
+    if (sm.facebook || sm.twitter || sm.instagram || sm.tiktok) score += 10;
+  }
+  // Description > 50 chars (10 pts)
+  if (data.description && data.description.length > 50) score += 10;
+  // President (5 pts)
+  if (data.president) score += 5;
+  // Founded year (5 pts)
+  if (data.foundedYear) score += 5;
+  // Member count (5 pts)
+  if (data.memberCount) score += 5;
+  // Confidence (10 pts)
+  if (data.confidence === "high") score += 10;
+  else if (data.confidence === "medium") score += 5;
+  return Math.min(100, score);
+}
+
+// ============== SMART SEARCH QUERIES ==============
+
+function buildSearchQueries(name: string, city: string, country: string, region: string): string[] {
+  const queries: string[] = [];
+
+  // Primary: exact name
+  queries.push(`"${name}" ${city} peña barcelonista`);
+  queries.push(`"${name}" ${city} FC Barcelona`);
+
+  // Catalan variant for Catalunya peñas
+  if (region === "cataluna") {
+    queries.push(`"${name}" ${city} penya blaugrana`);
+  }
+
+  // Without accents for better matching
+  const nameClean = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (nameClean !== name) {
+    queries.push(`"${nameClean}" ${city} FC Barcelona`);
+  }
+
+  // International peñas: search in English too
+  if (region === "world") {
+    queries.push(`"${name}" ${city} ${country} Barcelona supporters club`);
+  }
+
+  // Spanish business directories
+  if (region !== "world") {
+    queries.push(`"${name}" ${city} site:paginasamarillas.es OR site:infobel.com`);
+  }
+
+  return queries.slice(0, 4); // Max 4 to respect rate limits
+}
+
 // ============== MAIN PIPELINE ==============
 
 export async function enrichPenya(penyaId: string): Promise<{ success: boolean; error?: string; sourcesUsed?: string[] }> {
@@ -690,9 +961,44 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
   const sourceData: SourceData[] = [];
 
   try {
+    // Pre-Step: Check federation data for this peña's region
+    console.log(`[Enrichment] ${name}: Pre-step - Federation data lookup...`);
+    try {
+      const federations = await prisma.penyaFederation.findMany({
+        where: { scrapedData: { not: Prisma.DbNull } },
+      });
+      for (const fed of federations) {
+        const regions = fed.regions.map(r => r.toLowerCase());
+        const penyaRegionLower = (penya.province || penya.region || "").toLowerCase();
+        const matchesRegion = regions.some(r =>
+          penyaRegionLower.includes(r) || r.includes(penyaRegionLower)
+        );
+        if (!matchesRegion) continue;
+
+        const sd = fed.scrapedData as Record<string, unknown>;
+        const penyaNames = (sd?.extractedPenyaNames as string[]) || [];
+        const mainBodyText = ((sd?.mainPage as Record<string, unknown>)?.bodyText as string) || "";
+        const nameLower = name.toLowerCase();
+        const mentioned = penyaNames.some(pn => pn.toLowerCase().includes(nameLower) || nameLower.includes(pn.toLowerCase()))
+          || mainBodyText.toLowerCase().includes(nameLower);
+
+        if (mentioned) {
+          console.log(`[Enrichment] ${name}: Found mention in federation "${fed.name}"`);
+          const fedSnippet = `Federation: ${fed.name} (${fed.abbreviation || ""})
+Website: ${fed.website || "N/A"}
+Region: ${fed.regions.join(", ")}
+This peña was found listed/mentioned in the federation's scraped data.`;
+          sourceData.push({ source: `Federation: ${fed.name}`, snippets: fedSnippet });
+          sourcesUsed.push(`Federation (${fed.abbreviation || fed.name})`);
+        }
+      }
+    } catch (fedErr) {
+      console.error(`[Enrichment] ${name}: Federation lookup error:`, fedErr);
+    }
+
     // Step 0: Web search (DuckDuckGo) - always runs, no API key needed
-    console.log(`[Enrichment] ${name}: Step 0 - Web search...`);
-    const webSearch = await searchWeb(name, city, country);
+    console.log(`[Enrichment] ${name}: Step 0 - Web search (region: ${penya.region})...`);
+    const webSearch = await searchWeb(name, city, country, penya.region);
     const webSearchUrls = webSearch.urls;
     if (webSearch.source) { sourceData.push(webSearch.source); sourcesUsed.push("Web Search"); }
 
@@ -722,8 +1028,21 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
       }
       await new Promise(r => setTimeout(r, 500));
     }
+    // Pre-validate scraped pages content to help Claude
+    const validationResults: { url: string; score: number; reason: string }[] = [];
+    for (const page of scrapedPages) {
+      const v = preValidateWebsite(page, name, city);
+      validationResults.push({ url: page.url, score: v.score, reason: v.reason });
+      console.log(`[Enrichment] ${name}: Pre-validation ${page.url} => score ${v.score} (${v.reason})`);
+    }
+
     const scrapedSource = formatScrapedData(scrapedPages);
     if (scrapedSource) {
+      // Append pre-validation scores to scraped data so Claude can see them
+      const validationSummary = validationResults
+        .map(v => `${v.url} => Pre-validation score: ${v.score}/100 — ${v.reason}`)
+        .join("\n");
+      scrapedSource.snippets += `\n\n--- Content Validation Pre-Scores ---\n${validationSummary}`;
       sourceData.push(scrapedSource);
       sourcesUsed.push(`Scraping (${scrapedPages.length} URLs)`);
     }
@@ -784,6 +1103,8 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
       }));
     }
 
+    const qualityScore = calculateQualityScore(parsed);
+
     await prisma.penya.update({
       where: { id: penyaId },
       data: {
@@ -801,17 +1122,28 @@ export async function enrichPenya(penyaId: string): Promise<{ success: boolean; 
         scrapedContent: scrapedContent,
         enrichmentStatus: "enriched",
         detailsUpdatedAt: new Date(),
+        qualityScore,
+        sourcesUsed: sourcesUsed,
+        lastEnrichedAt: new Date(),
+        lastScrapedAt: scrapedPages.length > 0 ? new Date() : undefined,
+        enrichmentError: null,
       },
     });
 
-    console.log(`[Enrichment] ${name}: SUCCESS (sources: ${sourcesUsed.join(", ")}, website: ${parsed.website || "none"})`);
+    console.log(`[Enrichment] ${name}: SUCCESS (quality: ${qualityScore}, sources: ${sourcesUsed.join(", ")}, website: ${parsed.website || "none"})`);
     return { success: true, sourcesUsed };
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
     console.error("[Enrichment] Pipeline error:", err);
     await prisma.penya.update({
       where: { id: penyaId },
-      data: { enrichmentStatus: "failed", detailsUpdatedAt: new Date() },
+      data: {
+        enrichmentStatus: "failed",
+        detailsUpdatedAt: new Date(),
+        enrichmentError: errorMsg,
+        lastEnrichedAt: new Date(),
+      },
     });
-    return { success: false, error: err instanceof Error ? err.message : "Unknown error", sourcesUsed };
+    return { success: false, error: errorMsg, sourcesUsed };
   }
 }

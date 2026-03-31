@@ -1,0 +1,58 @@
+# Friends of Barca
+
+> Fan community website for FC Barcelona. We help international visitors experience the magic of FC Barcelona at Spotify Camp Nou in Barcelona, Spain. Match day packages (tickets + hotels + activities), AI-powered competition predictions, automated news coverage, travel guides, and fan photo gallery. Bilingual: English and Spanish.
+
+## Main Pages
+
+- [Home](https://friendsofbarca.com/): Featured match packages, upcoming matches carousel, latest news, title chances widget, newsletter signup
+- [Match Packages](https://friendsofbarca.com/packages): Curated travel packages for upcoming FC Barcelona matches including tickets, hotels near Camp Nou, and Barcelona activities
+- [News](https://friendsofbarca.com/news): AI-generated match chronicles, weekly digests, and FC Barcelona news coverage
+- [Competitions](https://friendsofbarca.com/competitions): La Liga, Champions League, and Copa del Rey standings with AI predictions, projected points, and match-by-match forecasts
+- [Calendar](https://friendsofbarca.com/calendar): Upcoming FC Barcelona matches schedule with opponent crests and competition info
+- [Gallery](https://friendsofbarca.com/gallery): Fan photo gallery - visitors can upload their matchday photos
+- [Blog](https://friendsofbarca.com/blog): Articles about FC Barcelona transfers, previews, and match reports
+- [Travel Guides](https://friendsofbarca.com/guides): Complete travel guides for fans visiting Barcelona and Camp Nou
+- [About](https://friendsofbarca.com/about): About Friends of Barca - local Barcelona fans helping international visitors
+- [Contact](https://friendsofbarca.com/contact): Contact form and information
+- [FAQ](https://friendsofbarca.com/faq): Frequently asked questions about FC Barcelona tickets, Camp Nou, travel to Barcelona, hotels, tours, and matchday tips
+
+## Travel Guides
+
+- [First Time at Camp Nou: The Complete Guide for International Fans](https://friendsofbarca.com/guides/first-time-camp-nou): Everything you need to know for your first visit to Spotify Camp Nou
+- [How to Get to Camp Nou from Barcelona City Center and Airport](https://friendsofbarca.com/guides/getting-to-camp-nou): Transport options including metro, bus, taxi, and walking routes
+- [How Much Do FC Barcelona Tickets Cost? Complete Price Guide 2026](https://friendsofbarca.com/guides/barca-ticket-prices): Ticket prices by category, where to buy, and money-saving tips
+- [The New Spotify Camp Nou: What to Expect as a Visitor](https://friendsofbarca.com/guides/new-camp-nou-what-to-expect): Guide to the renovated stadium, new features, and visitor experience
+- [Best Bars Near Camp Nou for Pre-Match Drinks](https://friendsofbarca.com/guides/best-bars-camp-nou): Local recommendations for bars and restaurants near the stadium
+- [The Complete History of El Clasico: Barcelona vs Real Madrid](https://friendsofbarca.com/guides/history-of-el-clasico): Historical overview of the greatest rivalry in football
+
+## Current Match Packages
+
+- [FC Barcelona vs Real Madrid](https://friendsofbarca.com/packages/barca-vs-real-madrid-mar-2026): El Clasico match day package
+- [FC Barcelona vs Atletico Madrid](https://friendsofbarca.com/packages/barca-vs-atletico-mar-2026): Top of the table clash package
+- [FC Barcelona vs Bayern Munich](https://friendsofbarca.com/packages/barca-vs-bayern-mar-2026): Champions League match day package
+- [FC Barcelona vs Manchester City](https://friendsofbarca.com/packages/barca-vs-man-city-apr-2026): Champions League match day package
+- [FC Barcelona vs Sevilla](https://friendsofbarca.com/packages/barca-vs-sevilla-apr-2026): La Liga match day package
+- [FC Barcelona vs Villarreal](https://friendsofbarca.com/packages/barca-vs-villarreal-apr-2026): La Liga match day package
+
+## Blog Posts
+
+- [Match Report: Barcelona Put on a Show with Dominant Home Win](https://friendsofbarca.com/blog/match-report-barca-dominates)
+- [FC Barcelona's Top Transfer Targets for Summer 2026](https://friendsofbarca.com/blog/top-transfer-targets-summer-2026)
+- [Barcelona's Road to the Champions League Final: Can They Do It?](https://friendsofbarca.com/blog/champions-league-road-to-final-2026)
+- [El Clasico Preview: What to Expect from Barca vs Real Madrid](https://friendsofbarca.com/blog/el-clasico-preview-march-2026)
+
+## Key Facts
+
+- **Stadium**: Spotify Camp Nou, Barcelona, Spain (capacity ~99,354 after renovation)
+- **Team**: FC Barcelona (founded 1899)
+- **Competitions covered**: La Liga, UEFA Champions League, Copa del Rey
+- **Languages**: English (primary), Spanish
+- **Content updates**: Match chronicles generated automatically after each game, weekly news digests, daily competition data refresh
+- **Photo gallery**: Fans can upload matchday photos (AI-moderated for content safety)
+- **Newsletter**: Weekly email digest with latest Barca news
+
+## Legal
+
+- [Privacy Policy](https://friendsofbarca.com/privacy)
+- [Terms of Service](https://friendsofbarca.com/terms)
+- [Cookie Policy](https://friendsofbarca.com/cookies)

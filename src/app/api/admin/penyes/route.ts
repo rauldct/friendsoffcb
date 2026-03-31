@@ -11,7 +11,13 @@ export async function GET(request: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "25", 10)));
 
+  const sortBy = searchParams.get("sortBy") || "";
+  const sortDir = (searchParams.get("sortDir") === "desc" ? "desc" : "asc") as "asc" | "desc";
+
   const status = searchParams.get("status");
+  const qualityMin = searchParams.get("qualityMin");
+  const qualityMax = searchParams.get("qualityMax");
+  const qualityFilter = searchParams.get("quality"); // "low" (0-30), "medium" (31-60), "high" (61-100)
 
   const where: Record<string, unknown> = {};
   if (region && region !== "all") where.region = region;
@@ -24,10 +30,30 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const [penyes, totalFiltered, counts, lastSyncSetting] = await Promise.all([
+  // Quality filters
+  if (qualityFilter === "low") {
+    where.qualityScore = { gte: 0, lte: 30 };
+  } else if (qualityFilter === "medium") {
+    where.qualityScore = { gte: 31, lte: 60 };
+  } else if (qualityFilter === "high") {
+    where.qualityScore = { gte: 61 };
+  } else if (qualityFilter === "none") {
+    where.qualityScore = null;
+  } else {
+    if (qualityMin) {
+      where.qualityScore = { ...((where.qualityScore as Record<string, number>) || {}), gte: parseInt(qualityMin) };
+    }
+    if (qualityMax) {
+      where.qualityScore = { ...((where.qualityScore as Record<string, number>) || {}), lte: parseInt(qualityMax) };
+    }
+  }
+
+  const [penyes, totalFiltered, counts, lastSyncSetting, enrichmentStats] = await Promise.all([
     prisma.penya.findMany({
       where,
-      orderBy: [{ region: "asc" }, { country: "asc" }, { city: "asc" }, { name: "asc" }],
+      orderBy: sortBy && ["name", "city", "province", "country", "region", "qualityScore"].includes(sortBy)
+        ? [{ [sortBy]: sortDir }, { name: "asc" }]
+        : [{ region: "asc" }, { country: "asc" }, { city: "asc" }, { name: "asc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -39,6 +65,13 @@ export async function GET(request: NextRequest) {
       prisma.penya.count({ where: { region: "world" } }),
     ]),
     prisma.setting.findUnique({ where: { key: "PENYES_LAST_SYNC" } }),
+    Promise.all([
+      prisma.penya.count({ where: { enrichmentStatus: "enriched" } }),
+      prisma.penya.count({ where: { enrichmentStatus: "pending" } }),
+      prisma.penya.count({ where: { enrichmentStatus: "failed" } }),
+      prisma.penya.count({ where: { enrichmentStatus: "manual" } }),
+      prisma.penya.aggregate({ _avg: { qualityScore: true }, where: { qualityScore: { not: null } } }),
+    ]),
   ]);
 
   const serializedPenyes = penyes.map(p => ({
@@ -46,6 +79,7 @@ export async function GET(request: NextRequest) {
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     detailsUpdatedAt: p.detailsUpdatedAt?.toISOString() || null,
+    lastEnrichedAt: p.lastEnrichedAt?.toISOString() || null,
   }));
 
   return NextResponse.json({
@@ -55,6 +89,13 @@ export async function GET(request: NextRequest) {
       cataluna: counts[1],
       spain: counts[2],
       world: counts[3],
+    },
+    enrichmentStats: {
+      enriched: enrichmentStats[0],
+      pending: enrichmentStats[1],
+      failed: enrichmentStats[2],
+      manual: enrichmentStats[3],
+      avgQuality: Math.round(enrichmentStats[4]._avg.qualityScore || 0),
     },
     pagination: {
       page,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 interface Newsletter {
   id: string;
@@ -53,6 +53,13 @@ export default function AdminNewsletterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Delete confirmation modal
+  const [deleteTarget, setDeleteTarget] = useState<Newsletter | null>(null);
+
+  // Sorting
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
   // Stats modal
   const [statsModal, setStatsModal] = useState<{ newsletter: Newsletter; data: StatsData } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -61,10 +68,18 @@ export default function AdminNewsletterPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/newsletter");
+      if (res.status === 401) {
+        window.location.href = "/admin/login";
+        return;
+      }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || `Server error (${res.status})`);
+      }
       const data = await res.json();
       setNewsletters(data.newsletters || []);
-    } catch {
-      setError("Failed to load newsletters");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load newsletters");
     }
     setLoading(false);
   }, []);
@@ -161,20 +176,21 @@ export default function AdminNewsletterPage() {
     setSending(null);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this draft?")) return;
-    setDeleting(id);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(deleteTarget.id);
     try {
-      const res = await fetch(`/api/admin/newsletter?id=${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/newsletter?id=${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
-        setNewsletters(prev => prev.filter(n => n.id !== id));
-        setSuccess("Draft deleted");
+        setNewsletters(prev => prev.filter(n => n.id !== deleteTarget.id));
+        setSuccess("Newsletter deleted");
         setTimeout(() => setSuccess(""), 3000);
       }
     } catch {
       setError("Failed to delete");
     }
     setDeleting(null);
+    setDeleteTarget(null);
   };
 
   const handlePreview = (id: string) => {
@@ -198,6 +214,26 @@ export default function AdminNewsletterPage() {
   const totalDelivered = sentNewsletters.reduce((s, n) => s + n.sentCount, 0);
   const totalOpens = sentNewsletters.reduce((s, n) => s + n.openCount, 0);
   const avgOpenRate = totalDelivered > 0 ? ((totalOpens / totalDelivered) * 100).toFixed(1) : "0";
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) setSortOrder(prev => prev === "asc" ? "desc" : "asc");
+    else { setSortBy(field); setSortOrder(field === "createdAt" || field === "sentCount" || field === "openCount" ? "desc" : "asc"); }
+  };
+
+  const sortedNewsletters = useMemo(() => {
+    return [...newsletters].sort((a, b) => {
+      const dir = sortOrder === "asc" ? 1 : -1;
+      let va: any, vb: any;
+      if (sortBy === "createdAt") { va = new Date(a.sentAt || a.createdAt).getTime(); vb = new Date(b.sentAt || b.createdAt).getTime(); }
+      else if (sortBy === "subject") { va = a.subject; vb = b.subject; }
+      else if (sortBy === "status") { va = a.status; vb = b.status; }
+      else if (sortBy === "sentCount") { va = a.sentCount; vb = b.sentCount; }
+      else if (sortBy === "openCount") { va = a.openCount; vb = b.openCount; }
+      else { va = ""; vb = ""; }
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va ?? "").localeCompare(String(vb ?? "")) * dir;
+    });
+  }, [newsletters, sortBy, sortOrder]);
 
   return (
     <div className="space-y-6">
@@ -304,11 +340,36 @@ export default function AdminNewsletterPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
-                <th className="px-4 py-3 font-medium text-gray-500">Subject</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Status</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Recipients</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Opens</th>
-                <th className="px-4 py-3 font-medium text-gray-500">Date</th>
+                <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("subject")}>
+                  <div className="flex items-center gap-1">
+                    Subject
+                    {sortBy === "subject" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                  </div>
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("status")}>
+                  <div className="flex items-center gap-1">
+                    Status
+                    {sortBy === "status" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                  </div>
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("sentCount")}>
+                  <div className="flex items-center gap-1">
+                    Recipients
+                    {sortBy === "sentCount" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                  </div>
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("openCount")}>
+                  <div className="flex items-center gap-1">
+                    Opens
+                    {sortBy === "openCount" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                  </div>
+                </th>
+                <th className="px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-700" onClick={() => handleSort("createdAt")}>
+                  <div className="flex items-center gap-1">
+                    Date
+                    {sortBy === "createdAt" ? <span className="text-[#004D98]">{sortOrder === "asc" ? "\u25B2" : "\u25BC"}</span> : <span className="text-gray-300">{"\u25B2\u25BC"}</span>}
+                  </div>
+                </th>
                 <th className="px-4 py-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
@@ -318,7 +379,7 @@ export default function AdminNewsletterPage() {
               ) : newsletters.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">No newsletters yet. Create your first draft!</td></tr>
               ) : (
-                newsletters.map(nl => {
+                sortedNewsletters.map(nl => {
                   const openRate = nl.sentCount > 0 ? ((nl.openCount / nl.sentCount) * 100).toFixed(1) : "-";
                   return (
                     <tr key={nl.id} className="hover:bg-gray-50">
@@ -370,15 +431,15 @@ export default function AdminNewsletterPage() {
                               >
                                 {sending === nl.id ? "Sending..." : "Send"}
                               </button>
-                              <button
-                                onClick={() => handleDelete(nl.id)}
-                                disabled={deleting === nl.id}
-                                className="text-red-500 hover:text-red-700 text-xs font-medium disabled:opacity-50"
-                              >
-                                {deleting === nl.id ? "..." : "Delete"}
-                              </button>
                             </>
                           )}
+                          <button
+                            onClick={() => setDeleteTarget(nl)}
+                            disabled={deleting === nl.id}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium disabled:opacity-50"
+                          >
+                            {deleting === nl.id ? "..." : "Delete"}
+                          </button>
                           {nl.errorMessage && (
                             <button
                               onClick={() => alert(nl.errorMessage)}
@@ -398,6 +459,41 @@ export default function AdminNewsletterPage() {
           </table>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h2 className="font-heading font-bold text-[#1A1A2E] text-lg">Delete Newsletter</h2>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-gray-600 mb-2">Are you sure you want to delete this newsletter?</p>
+              <p className="text-sm font-medium text-[#1A1A2E] bg-gray-50 px-3 py-2 rounded-lg truncate">{deleteTarget.subject}</p>
+              {deleteTarget.status === "sent" && (
+                <p className="text-xs text-amber-600 mt-3 bg-amber-50 px-3 py-2 rounded-lg">
+                  This newsletter has already been sent to {deleteTarget.sentCount} subscribers. Deleting it will remove all tracking data.
+                </p>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting === deleteTarget.id}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleting === deleteTarget.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Modal */}
       {statsModal && (

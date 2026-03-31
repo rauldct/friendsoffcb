@@ -1,9 +1,30 @@
 import type { Metadata } from "next";
+import { Inter, Montserrat } from "next/font/google";
+import dynamic from "next/dynamic";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import PageViewTracker from "@/components/PageViewTracker";
+import HtmlLangSync from "@/components/HtmlLangSync";
+import WebVitals from "@/components/WebVitals";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import { LanguageProvider } from "@/lib/LanguageContext";
+
+const CookieConsent = dynamic(() => import("@/components/CookieConsent"), { ssr: false });
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["600", "700", "800", "900"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -17,10 +38,13 @@ export const metadata: Metadata = {
     "Barça tickets", "Barcelona match tickets", "Camp Nou experience",
     "Barcelona fan guide", "El Clásico tickets", "Champions League Barcelona",
     "Barcelona travel guide", "Camp Nou tour", "Barcelona matchday",
+    "entradas FC Barcelona", "entradas Camp Nou", "guía Barcelona fútbol",
+    "experiencia Camp Nou", "paquetes partido Barcelona", "viaje Barcelona fútbol",
   ],
   metadataBase: new URL("https://friendsofbarca.com"),
   alternates: {
     canonical: "https://friendsofbarca.com",
+    languages: { "en": "https://friendsofbarca.com", "es": "https://friendsofbarca.com/es", "x-default": "https://friendsofbarca.com" },
   },
   openGraph: {
     title: "Friends of Barça | Your Ultimate FC Barcelona Experience",
@@ -112,11 +136,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} ${montserrat.variable}`}>
       <head>
+        <meta name="theme-color" content="#1A1A2E" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.json" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -129,8 +155,12 @@ export default function RootLayout({
       <body>
         <GoogleAnalytics />
         <PageViewTracker />
+        <WebVitals />
+        <ServiceWorkerRegister />
         <LanguageProvider>
+          <HtmlLangSync />
           <LayoutWrapper>{children}</LayoutWrapper>
+          <CookieConsent />
         </LanguageProvider>
       </body>
     </html>
